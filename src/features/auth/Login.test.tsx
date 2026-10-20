@@ -38,6 +38,23 @@ describe('Login', () => {
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument()
   })
 
+  it('rejects invalid email format without calling supabase', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    )
+
+    await user.type(screen.getByLabelText(/email/i), 'not-an-email')
+    await user.type(screen.getByLabelText(/password/i), 'password1')
+    await user.click(screen.getByRole('button', { name: /sign in/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid email address')
+    expect(supabase.auth.signInWithPassword).not.toHaveBeenCalled()
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
   it('shows error on failed sign-in', async () => {
     const user = userEvent.setup()
     vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({

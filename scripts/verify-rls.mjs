@@ -37,7 +37,7 @@ function log(name, pass, detail = '') {
 
 async function signIn(email, password) {
   const client = createClient(url, anonKey)
-  const { data, error } = await client.auth.signInWithPassword({ email, password })
+  const { error } = await client.auth.signInWithPassword({ email, password })
   if (error) throw new Error(`signin ${email}: ${error.message}`)
   return client
 }

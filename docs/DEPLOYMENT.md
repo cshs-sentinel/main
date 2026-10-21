@@ -5,9 +5,28 @@ Cloudflare Worker** for server-side work (weather fetch, Phase 6). Keeping them
 apart guarantees that secrets (service-role key, weather API key) never ship to
 the browser.
 
-> Deployment is a Phase 9 activity. Nothing here has been deployed yet. Do not
-> deploy to a production hostname before the Phase 9 pre-flight checklist
-> (§6) is complete and the responsible school authority has signed off.
+> Deployment is a Phase 9 activity. The **staging** deployment below is live and
+> points at the *development* Supabase project, which contains synthetic data
+> only. Do not use it with real people until the Phase 9 checklist (§6) is
+> complete and the responsible school authority has signed off.
+
+---
+
+## 0. Current staging deployment
+
+| Item | Value |
+|---|---|
+| Live URL (stable) | **https://sentinel-app-1jo.pages.dev** |
+| Deployment URL (this build) | https://b92071f4.sentinel-app-1jo.pages.dev |
+| Cloudflare account | `62991ae0c53627eb96f1207463435b3f` — "Sentinelcshs@gmail.com's Account" |
+| Pages project | `sentinel-app` (production branch `main`) |
+| Deployed commit | `b8b4caa` |
+| Backend | Supabase project `vuqjfigoeuvjieznqyil` (**development** project, synthetic data only) |
+| Auth | `site_url` = the deployed origin; redirect allow-list = localhost + the deployed origin |
+| Verified | root 200, deep links (`/sos`, `/incidents`) 200, CSP + security headers applied, password sign-in from the deployed origin 200, anon read 0 rows |
+
+Sign in with the synthetic accounts: `rls-admin@test.local` / `RlsTestPass123!`
+(administrator) and `rls-student@test.local` / `RlsTestPass123!` (student).
 
 ---
 
@@ -20,6 +39,15 @@ the browser.
 | `CLOUDFLARE_API_TOKEN` | lets the CLI deploy | Dashboard → My Profile → API Tokens → Create (template: "Edit Cloudflare Workers") with the account's Pages edit permission |
 | `CLOUDFLARE_ACCOUNT_ID` | identifies the account | Dashboard → any account page → Account ID (right-hand side) |
 | Supabase auth redirect URL for the deployed domain | otherwise sign-in is rejected by Supabase | Supabase → Authentication → URL Configuration |
+
+**Operational note (2026-10-21):** a scoped token was pasted into a chat
+transcript while setting this up, so it must be **rotated** — revoke it in
+Dashboard → My Profile → API Tokens and create a replacement, then keep it out of
+chat and out of the repository (shell session or secret store only).
+
+The SENTINEL Cloudflare account has **two-factor enforcement disabled**
+(`settings.enforce_twofactor = false`). Enable it before any real pilot, and
+likewise for the Supabase project and the GitHub repository.
 
 Never put the Cloudflare API token in the repository or in any `VITE_` variable.
 Keep it in the shell session (or a secret store) for the deploy only.
@@ -90,7 +118,10 @@ Pilot-only options to consider before the school pilot:
 - `disable_signup: true` once accounts are pre-provisioned by the administrator.
 - `mailer_autoconfirm: true` (or a custom SMTP provider) because the default
   Supabase mailer is rate-limited on the free tier — new accounts may not
-  receive confirmation emails.
+  receive confirmation emails. **Observed:** the free-tier mailer already
+  returned `429 over_email_send_rate_limit` during the staging smoke test, so
+  passwordless/email-confirmation sign-up is not viable on the free tier
+  without a custom SMTP provider.
 - A separate Supabase project for the pilot (the current project holds synthetic
   test data only).
 

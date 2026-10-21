@@ -150,6 +150,9 @@ been run, and the deployment still targets the development Supabase project.
 | 9.1 | *pending* | `scripts/pilot-readiness.mjs` + `npm run check:pilot` (39 automated pre-flight checks: env, bundle, headers, routes, worker, docs, rollback coverage) | 39/39 pass | done |
 | 9.2 | *pending* | Rollback rehearsal: the documented inverse SQL for migration 0012 was executed, the table re-applied from the repository, and the full suite re-run | rehearsed, 208/208 | done |
 | 9.3 | *pending* | `docs/GATE9_EVIDENCE.md`, DEPLOYMENT §5.1 (pilot project steps, free-tier pause warning), risk register updates | 39/39 + 208/208 | done — **awaiting the school authority's sign-off** |
+| 9.4 | *pending* | `scripts/journey.mjs` (+ `npm run check:journey`): real end-to-end journeys against the live database with real sessions — 29 steps | 29/29 pass | done |
+| 9.5 | *pending* | `scripts/seed-school.mjs` (+ `npm run seed:school`) and `scripts/bootstrap-project.mjs` (+ `npm run bootstrap:project`): a synthetic demo school, and a one-command migration + seed for the pilot project | seeded 12 locations, 30 slots, sample records | done |
+| 9.6 | *pending* | Staging deployment on branch `staging` → `https://staging.sentinel-app-1jo.pages.dev` | routes 200 | done |
 
 The gate itself is a human decision: the pilot checklist must be signed by the
 responsible school authority, and seven risks (H1–H7) still need owner actions —

@@ -15,13 +15,16 @@ make, and the seven open items in `docs/RISK_REGISTER.md` are still open.
 | Item | State | Evidence |
 |---|---|---|
 | Application | **Live** on Cloudflare Pages: `https://sentinel-app-1jo.pages.dev` | deployment `8e666f9d`; all routes 200; SPA deep links 200 |
+| Staging environment | **Live**: `https://staging.sentinel-app-1jo.pages.dev` (branch `staging`) | deployment `0d04c330`; routes 200 |
+| End-to-end journeys | **29/29 journey steps pass** against the live database with real sessions | `npm run check:journey` — check-in → report + photo → SOS → acknowledge → assign → resolve → close → alert publish, with the forbidden paths refused, history retained and the dashboard counts matching the records |
+| Demo content | The app is seeded with a **synthetic** school (campus, 2 wings, 3 floors, 6 rooms, 30 timetable slots, 2 check-ins, 2 reports, 1 acknowledged case, 1 published alert) | `npm run seed:school` |
 | Security headers | CSP, `nosniff`, `DENY` frames, referrer policy, permissions policy | `npm run check:pilot` (DEPLOY section) |
 | Weather worker | **Live** at `https://sentinel-weather.sentinelcshs.workers.dev` | responds 200, correct CORS origin, `heat_index_v1`, "not an indoor measurement" disclaimer present |
 | Database | Dev project `vuqjfigoeuvjieznqyil`, 17 migrations applied | `node scripts/verify-rls.mjs` → **208/208** checks pass |
 | Access control | Per-table, per-role, verified at the API layer | 208 checks across 18 sections, including a per-table anon sweep |
 | Build | 170/170 unit tests, lint 0/0, typecheck ✓, a11y checks ✓, production build ✓ | `npm run lint / typecheck / test / build / check:a11y / check:pilot` |
 | Rollback path | **Rehearsed for real** | see §2 |
-| Documentation | 15 documents, every migration has a documented rollback | `npm run check:pilot` (DOCS section) |
+| Documentation | 16 documents, every migration has a documented rollback | `npm run check:pilot` (DOCS section) |
 | Pilot readiness | **39/39 automated checks pass** | `npm run check:pilot` |
 
 ## 2. Backup / restore rehearsal (was risk H5)

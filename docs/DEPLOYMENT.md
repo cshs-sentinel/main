@@ -16,7 +16,8 @@ the browser.
 
 | Item | Value |
 |---|---|
-| Live URL (stable) | **https://sentinel-app-1jo.pages.dev** |
+| Live URL (production, branch `main`) | **https://sentinel-app-1jo.pages.dev** |
+| Staging URL (branch `staging`) | **https://staging.sentinel-app-1jo.pages.dev** |
 | Deployment URL (phase 8 hardening) | https://8e666f9d.sentinel-app-1jo.pages.dev |
 | Previous deployment (alerts build) | https://8b816480.sentinel-app-1jo.pages.dev |
 | Previous deployment (Phase 6) | https://08258527.sentinel-app-1jo.pages.dev |
@@ -128,15 +129,24 @@ second Supabase project so the pilot has clean, isolated data:
 
 1. Dashboard → **New project** → name `SENTINEL Pilot`, region `ap-southeast-1`
    (same region as the dev project), strong database password, plan **free**.
-2. Copy the project's **anon** key and **URL**, then set them as the build
+2. Bootstrap it — one command applies every migration in order and reports the
+   resulting schema:
+
+   ```powershell
+   $env:SUPABASE_ACCESS_TOKEN = "<management token>"
+   $env:SUPABASE_PROJECT_REF = "<new project ref>"
+   npm run bootstrap:project
+   ```
+
+3. Copy the project's **anon** key and **URL**, then set them as the build
    variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) for the pilot
    deployment.
-3. Apply the migrations in order, `0001` … `0017` (the SQL files in
-   `supabase/migrations/` are the source of truth — the order is the filename
-   order). Each file is applied through the Supabase SQL editor or the Management
-   API query endpoint; the dev project was built exactly this way.
 4. Seed the pilot school and its location categories, and create the first
-   administrator (see `docs/FIRST_ADMIN.md`).
+   administrator (see `docs/FIRST_ADMIN.md`). `npm run seed:school` creates a
+   **synthetic** demo school (campus, two wings, floors, six rooms, a week of
+   timetable, sample check-ins, reports, one acknowledged case and one published
+   alert) so the pilot can be explored from day one — no real person, place or
+   event is involved.
 5. Set the pilot project's auth configuration: `site_url` = the pilot hostname,
    `uri_allow_list` = the pilot origin, and `disable_signup = true` (or leave
    sign-ups open only if the school wants self-registration with a custom SMTP
@@ -152,6 +162,11 @@ second Supabase project so the pilot has clean, isolated data:
 > inactivity** and stays paused until someone opens the dashboard. For a pilot,
 > either check the project regularly or use a paid plan; a paused project means
 > sign-in and data access stop working.
+
+> **Verification after the pilot project exists:** `npm run check:journey` drives
+> the real product journeys (check-in → report + photo → SOS → acknowledge → close →
+> alert publish) against the target project with real sessions, and
+> `npm run check:pilot` re-runs the 39 pre-flight checks.
 
 Pilot-only options to consider before the school pilot:
 - `disable_signup: true` once accounts are pre-provisioned by the administrator.

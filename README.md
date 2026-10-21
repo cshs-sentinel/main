@@ -29,6 +29,9 @@ npm run dev
 | `npm test` | Vitest unit/component tests |
 | `npm run check:a11y` | source-level accessibility / contrast / UI checks |
 | `npm run check:pilot` | automated pilot pre-flight checklist (39 checks) |
+| `npm run check:journey` | end-to-end journeys against the live database (29 steps) |
+| `npm run seed:school` | seed a synthetic demo school (campus, rooms, timetable, samples) |
+| `npm run bootstrap:project` | apply all migrations to a fresh Supabase project |
 | `npm run build` | production build to `dist/` |
 | `node scripts/verify-rls.mjs` | RLS verification against the dev Supabase project |
 
@@ -39,10 +42,13 @@ is never committed.
 ## Current state
 
 Phases 1–8 complete (Gate 1–8 approved). Phase 9 (deployment and controlled pilot)
-is **prepared**: the app and the weather worker are live, `npm run check:pilot`
-runs 39 automated pre-flight checks, the migration rollback path has been
-rehearsed for real, and `docs/GATE9_EVIDENCE.md` states exactly what is left —
-chiefly the school authority's sign-off and seven owner actions in
+is **prepared**: the app and the weather worker are live (production and staging
+hostnames), `npm run check:pilot` runs 39 automated pre-flight checks,
+`npm run check:journey` drives 29 real end-to-end journey steps against the live
+database, the migration rollback path has been rehearsed for real, the app is
+seeded with a synthetic demo school, and `npm run bootstrap:project` sets up a
+fresh pilot project in one command. `docs/GATE9_EVIDENCE.md` states exactly what
+is left — chiefly the school authority's sign-off and seven owner actions in
 `docs/RISK_REGISTER.md` (rotate the Cloudflare token, enable 2FA, disable
 sign-ups, set the school coordinates, create the pilot Supabase project, decide
 on responder notification, rehearse a full restore).

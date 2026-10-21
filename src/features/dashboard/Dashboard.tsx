@@ -78,7 +78,7 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <main className="admin-page">
+      <main id="main" className="admin-page">
         <h1>Dashboard</h1>
         <p role="status">Loading dashboard…</p>
       </main>
@@ -86,7 +86,7 @@ export default function Dashboard() {
   }
 
   return (
-    <main className="admin-page">
+    <main id="main" className="admin-page">
       <h1>Dashboard</h1>
       <p className="admin-subtitle">
         Signed in as {user?.id ? 'an account' : 'a user'}

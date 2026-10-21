@@ -95,6 +95,18 @@ is advisory-only, visible to responders and administrators, and never triggers a
 automatic action. The school coordinates are still placeholders and are labelled
 as such until the real location is configured.
 
+## Phase 8 (partial — pulled forward) — UI shell, responsive layout, accessibility
+
+| Task | Commit | Files | Tests | Status |
+|---|---|---|---|---|
+| 8.0 | *pending* | `src/features/nav/AppShell.tsx` + tests (skip link, sticky header with sign-out, bottom nav with `aria-current`, *More* panel, disabled Alerts entry), route restructure, `id="main"` on every page landmark | 9 shell tests | done |
+
+Scope: the navigation shell, responsive breakpoints (phones first; 48 rem and
+75 rem), visible focus rings, 44 px tap targets, `prefers-reduced-motion`, and a
+single `<main>` landmark per page. Remaining Phase 8 work (contrast audit,
+screen-reader walkthrough, e2e/browser tests, backup/restore rehearsal, retention
+jobs, audit-log screen) is still open.
+
 Staleness correction (Task 6.5): the worker and the UI computed staleness from the
 *fetch* timestamp, which is always current, so `freshness.stale` and the stored
 `is_stale` column could never become true and the live "STALE" marker could never

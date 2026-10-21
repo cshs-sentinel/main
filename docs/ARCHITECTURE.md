@@ -132,9 +132,20 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 
 ### 2.2 Navigation Shell
 
-Mobile-first bottom nav (student view): **Home | Check-In | SOS | Alerts | More**
-Staff/responder: adds **Reports | Incidents**
-Admin: adds **Admin**
+Mobile-first bottom nav: **Home | Check-In | SOS | More**
+Staff/responder: the *More* panel adds **Hazard report review** and **Incident response**
+Admin: the *More* panel adds **User management**, **School locations** and **Schedules**
+
+**[Implemented]** `src/features/nav/AppShell.tsx` provides the shell used by every
+authenticated route: a **skip link** to the page's single `<main id="main">`
+landmark, a sticky header (brand, current role, sign-out), the bottom navigation
+with `aria-current="page"` on the active item, and a *More* panel with the
+role-appropriate links. The panel lists **Alerts** as *coming in the alerts phase*
+(disabled, not a link) rather than linking to a route that does not exist yet —
+the spec's five-item bottom nav therefore becomes four items plus the *More* entry
+until Phase 7 ships the alerts feed. Breakpoints: phones first, wider layout from
+48 rem and 75 rem; interactive targets are at least 44 px (`min-height: 2.75rem`);
+`prefers-reduced-motion` is respected.
 
 **[CONFIRMED]** The app is a Vite + React + TypeScript SPA with React Router route
 guards (`src/App.tsx`); implemented routes are listed in §2.1.

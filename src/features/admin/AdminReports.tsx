@@ -128,7 +128,7 @@ export default function AdminReports() {
   }
 
   return (
-    <main className="admin-page">
+    <main id="main" className="admin-page">
       <h1>Hazard report review</h1>
       <p className="admin-subtitle">
         Reports filed in your school. Acknowledge a report to show it has been seen,

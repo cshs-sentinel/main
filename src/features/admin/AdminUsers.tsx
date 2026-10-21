@@ -58,7 +58,7 @@ export default function AdminUsers() {
   }
 
   return (
-    <main className="admin-page">
+    <main id="main" className="admin-page">
       <h1>User Management</h1>
       <p className="admin-subtitle">Change user roles. All changes are audited.</p>
 

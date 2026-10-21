@@ -281,7 +281,7 @@ export default function AdminSchedules() {
   }
 
   return (
-    <main className="admin-page">
+    <main id="main" className="admin-page">
       <h1>Schedule Management</h1>
       <p className="admin-subtitle">
         Define when a location is expected to be in use. Overlapping active times

@@ -56,7 +56,7 @@ export default function Schedule() {
   })).filter((group) => group.rows.length > 0)
 
   return (
-    <main className="admin-page sched-page">
+    <main id="main" className="admin-page sched-page">
       <h1>My Schedule</h1>
       <p className="sched-notice" role="note">
         Schedule-derived expectations only. These times show where you are

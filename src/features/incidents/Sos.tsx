@@ -145,7 +145,7 @@ export default function Sos() {
   }
 
   return (
-    <main className="admin-page">
+    <main id="main" className="admin-page">
       <h1>SOS</h1>
       <p className="admin-subtitle">
         Sends an emergency case to school responders. <strong>Call your local

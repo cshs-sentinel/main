@@ -424,7 +424,7 @@ export default function Locations() {
   }
 
   return (
-    <main className="admin-page">
+    <main id="main" className="admin-page">
       <h1>School Locations</h1>
       <p className="admin-subtitle">
         Manage buildings, rooms, and outdoor areas for your school. These records are

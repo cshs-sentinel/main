@@ -167,7 +167,7 @@ export default function AdminIncidents() {
   }
 
   return (
-    <main className="admin-page">
+    <main id="main" className="admin-page">
       <h1>Incident response</h1>
       <p className="admin-subtitle">
         Cases raised by people in your school. Acknowledge, assign, work the case,

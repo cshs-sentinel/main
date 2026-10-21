@@ -206,7 +206,7 @@ export default function Reports() {
   }
 
   return (
-    <main className="admin-page">
+    <main id="main" className="admin-page">
       <h1>Hazard reports</h1>
       <p className="admin-subtitle">
         Report a facility or safety problem. Reports go to responders and

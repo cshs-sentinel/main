@@ -120,7 +120,7 @@ export default function CheckIn() {
   }
 
   return (
-    <main className="admin-page">
+    <main id="main" className="admin-page">
       <h1>Safety check-in</h1>
       <p className="admin-subtitle">
         A check-in records what you told us. It is not a verified location — staff

@@ -92,8 +92,8 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 | Schools, locations, categories, multi-school isolation | Implemented (0003–0005) |
 | Schedules (own-school read for all roles) | Implemented (0006) |
 | Hazard reports: file as self, reporter + reviewer read, reviewer status transitions, no client delete | Implemented (0007, read scope narrowed in 0008) |
-| Report photo upload (private bucket) | Planned (Phase 3, next) |
-| Check-ins | Planned |
+| Report photos in a private bucket with signed-URL access | Implemented (0009–0011) |
+| Check-ins with explicit location source | Implemented (0012) |
 | SOS / incidents, alerts, weather, dashboard | Planned (later phases) |
 
 ---
@@ -109,10 +109,10 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 | `/login` | Sign in | Public | — | Implemented |
 | `/signup` | Sign up | Public | — | Implemented |
 | `/` | Home + role links | Auth | All | Implemented |
-| `/check-in` | Check-in button + history | Auth | student, teacher_staff, responder, admin | Planned |
+| `/check-in` | Check-in button + history | Auth | student, teacher_staff, responder, admin | Implemented |
 | `/schedule` | Own schedule | Auth | All | Implemented |
-| `/reports` | Hazard report form + own reports | Auth | All | Planned (Phase 3) |
-| `/admin/reports` | Report review queue | Auth | responder, admin | Planned (Phase 3) |
+| `/reports` | Hazard report form + own reports | Auth | All | Implemented |
+| `/admin/reports` | Report review queue | Auth | responder, admin | Implemented |
 | `/sos` | SOS trigger + case ref | Auth | All | Planned (Phase 4) |
 | `/incidents` | Incident list (role-filtered) | Auth + role | responder, admin | Planned (Phase 4) |
 | `/incidents/:ref` | Incident detail + timeline | Auth + role | responder, admin | Planned (Phase 4) |
@@ -192,6 +192,7 @@ schedules *──1 locations (expected place; no person FK)
 
 check_ins *──1 profiles
 check_ins *──1 locations (optional)
+check_ins *──1 schools
 
 hazard_reports *──1 profiles (reporter)
 hazard_reports *──1 locations (optional)
@@ -213,10 +214,10 @@ audit_logs (append-only; actor, action, entity, before/after JSONB)
 ```
 
 **Implemented vs planned:** `profiles`, `audit_logs`, `schools`,
-`location_categories`, `locations`, `schedules`, and `hazard_reports` exist
-(migrations 0001–0008). `check_ins`, `report_attachments`, `incidents`,
-`incident_status_history`, `incident_notes`, `alerts`, `alert_targets`, and
-`weather_observations` are design targets from the original specification and
+`location_categories`, `locations`, `schedules`, `hazard_reports`,
+`report_attachments`, and `check_ins` exist (migrations 0001–0012).
+`incidents`, `incident_status_history`, `incident_notes`, `alerts`, `alert_targets`,
+and `weather_observations` are design targets from the original specification and
 are not built yet.
 
 **Migration note (Phase 2, approved):** the interim `buildings`/`floors`/`rooms`
@@ -233,9 +234,9 @@ school-scoped and archive-only (no client deletes).
 | `location_categories` | id, school_id, name (unique/school, ci), environment, is_active | Own-school read; admin insert/update; no delete (deactivate) |
 | `locations` | id, school_id, parent_id (optional self-FK), category_id, name, code, environment, status, access_level | Own-school read; admin insert/update; **no client delete (archive-only)** |
 | `schedules` | id, school_id, location_id, day_of_week (0–6), start_time, end_time, effective_from, effective_until, label, status | Own-school read (all roles); admin insert/update; **no client delete (deactivate)** |
-| `check_ins` | id, profile_id, location_id, location_source, checked_in_at, period | *Planned* — user own write/read; responder building read |
+| `check_ins` | id, school_id, profile_id, location_id (optional), location_source, period, status, checked_in_at | Implemented: own write; own + responder/admin read; **immutable (no update/delete)** |
 | `hazard_reports` | id, school_id, reporter_id, location_id (optional), category, description, status | Implemented: own-school scope + **reporter or reviewer reads**; any role files own-school as self; responder/admin update status; **no client delete (retained)** |
-| `report_attachments` | id, report_id, storage_path | *Planned* — via report RLS + storage policy |
+| `report_attachments` | id, report_id, school_id, storage_path, uploaded_by | Implemented: reporter uploads; reads mirror the report read scope; no client update |
 | `incidents` | id, case_ref UNIQUE, status, created_by, assigned_to | Creator + responder/admin |
 | `incident_status_history` | id, incident_id, from_status, to_status, actor_id | Same as incident |
 | `incident_notes` | id, incident_id, author_id, body | Same |
@@ -279,6 +280,28 @@ keeps reporter identity and report content off unauthorised screens. The
 "read all reports" permission therefore belongs to responders and
 administrators only, as §1.2 states.
 
+**Check-ins server-side validation** (trigger `validate_check_in`, migration
+0012): a check-in is a self-report and is recorded only for the authenticated
+user; an optional location must exist, belong to the same school, and not be
+archived. Source honesty is enforced: `staff_verified` may only be recorded by
+responders/administrators, and `schedule_derived` requires a location with an
+**active schedule covering today** — so a "schedule-derived" check-in can never
+be claimed for a place nobody is scheduled to be. Check-in rows are immutable
+(no client update or delete; 90-day retention is handled by a later job).
+
+**Report photos (private storage, migrations 0009–0011):** the
+`report-photos` bucket is **not public** (5 MB limit; JPEG/PNG/WebP only).
+Objects live at `{school_id}/{report_id}/{filename}` and are read only through
+short-lived signed URLs (60 s) that the client requests *after* the report
+read-scope check. Storage policies mirror the report rules: reporters may
+upload to their own report and read/delete their own objects; responders and
+administrators may read and moderate any photo in their own school; the school
+folder in the path must be the user's school, so cross-school access is
+impossible. `report_attachments` records which object belongs to which report,
+and the server rejects paths that do not match `{school_id}/{report_id}/…`.
+Supabase blocks direct SQL deletes on `storage.objects`, so orphaned objects are
+purged through the Storage API by a reviewer.
+
 ### 4.3 Enums / status values (check constraints)
 
 - `app_role`: student, teacher_staff, responder, administrator, (system_operator)
@@ -290,7 +313,8 @@ administrators only, as §1.2 states.
 - `schedules.day_of_week`: 0–6 (0 = Sunday, JS `Date.getDay()` convention)
 - `incident_status` *(planned)*: new, acknowledged, assigned, in_progress, resolved, closed, cancelled
 - `report_status` (implemented, migration 0007): open, acknowledged, resolved
-- `location_source` *(planned)*: self_selected, schedule_derived, staff_verified
+- `location_source` (implemented, migration 0012): self_selected, schedule_derived, staff_verified
+- `check_ins.status` (implemented, migration 0012): safe, need_help
 - `alert_status` *(planned)*: draft, approved, published, corrected, cancelled
 - `report_category` (implemented, migration 0007): facility_damage, safety_hazard, crowding, other
 
@@ -430,6 +454,7 @@ Where T = dry-bulb temperature (°F), RH = relative humidity (%).
 | Alert approve/publish/correct/cancel | ✓ |
 | Admin CRUD on school structure | ✓ |
 | Hazard report creation and status changes | ✓ (trigger `hazard_reports_audit`) |
+| Check-in creation | ✓ (append-only `check_ins` rows; no update/delete possible) |
 | User sign-in (auth logs handled by Supabase) | Supabase auth audit |
 
 ### 8.2 Retention (Proposed Defaults)
@@ -491,6 +516,8 @@ Documented in `docs/FIRST_ADMIN.md`:
 | File uploads | Type/size preview | MIME allowlist, size limit, scan (post-MVP) |
 | Numeric (weather) | — | Range checks before heat-index |
 | Hazard report | Category select, description 3–2000 | Trigger `validate_hazard_report`: category allowlist, length, reporter identity, location scope, status workflow |
+| Report photo | Image type + size preview (5 MB) | Bucket MIME/size limits; storage policies; attachment path must match the report |
+| Check-in | Source + location picker | Trigger `validate_check_in`: self only, location scope, staff-only `staff_verified`, `schedule_derived` needs a live schedule |
 
 ### 10.3 Failure Modes to Handle
 

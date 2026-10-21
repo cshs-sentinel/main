@@ -34,21 +34,32 @@ Repo: `cshs-sentinel/main` · Supabase project `vuqjfigoeuvjieznqyil` (dev).
 Gate 2 evidence: authorized users see only permitted school data; schedule data are
 never presented as verified occupancy (`/schedule` notice + `schedule-derived` tags).
 
-## Phase 3 — Check-ins and hazard reports (in progress)
+## Phase 3 — Check-ins and hazard reports (complete, Gate 3 pending review)
 
 | Task | Commit | Files | Tests | Status |
 |---|---|---|---|---|
-| 3.1 | *pending* | migration 0007 `hazard_reports` (+0008 read-scope narrowing), verify-rls §11, `docs/ARCHITECTURE.md`, `docs/ROLLBACK.md` | verify-rls 105/105, 48 unit tests, lint, typecheck, build | implemented, awaiting commit |
-| 3.2 | — | private `report-photos` bucket + storage policies + access checks | planned | pending |
-| 3.3 | — | `/reports` submission + own-reports list UI | planned | pending |
-| 3.4 | — | `/admin/reports` review queue (responder/admin) | planned | pending |
-| 3.5 | — | `docs/GATE3_EVIDENCE.md` + full re-run | planned | pending |
+| 3.1 | `88e5a07` | Migrations 0007 (`hazard_reports` + review workflow) & 0008 (read scope narrowed), verify-rls §11, docs de-conflict | verify-rls, 48 unit tests | done |
+| 3.2 | *pending* | Migrations 0009 (private `report-photos` bucket, `report_attachments`, storage policies), 0010 (filename fix), 0011 (photo read/delete scope), verify-rls §12 | verify-rls 125/125 | done |
+| 3.3 | *pending* | `src/features/reports/Reports.tsx` + `shared.ts` + tests, `/reports` route, CSS | 6 unit tests | done |
+| 3.4 | *pending* | `src/features/admin/AdminReports.tsx` + tests, `/admin/reports` route (responder/admin) | 5 unit tests | done |
+| 3.6 | *pending* | Migration 0012 `check_ins`, `src/features/checkin/CheckIn.tsx` + tests, `/check-in` route, verify-rls §13 | 6 unit tests | done |
+| 3.5 | *pending* | `docs/GATE3_EVIDENCE.md`, ARCHITECTURE/ROLLBACK/DEVELOPMENT_LOG/README updates | verify-rls 135/135, 65 unit tests | done — **awaiting Gate 3 review** |
 
 Implemented report model (migrations 0007–0008): any authenticated member files a
 report for their own school as themselves; a report is readable by its reporter and
 by responder/administrator reviewers only; reviewers move status through
 `open → acknowledged → resolved` (one-step undo); details are immutable after
 submission; no client delete; creations and status changes are audited.
+
+Implemented media model (migrations 0009–0011): private `report-photos` bucket
+(5 MB, JPEG/PNG/WebP), objects at `{school_id}/{report_id}/{filename}`, access
+only through 60-second signed URLs, storage policies mirroring the report read
+scope, and a `report_attachments` table whose rows must match the report path.
+
+Implemented check-in model (migration 0012): a check-in is a self-report with an
+explicit `location_source` (`self_selected`, `schedule_derived`,
+`staff_verified`); `schedule_derived` requires an active schedule for today,
+`staff_verified` is staff-only, and the record is immutable.
 
 ### Known environment issue (2026-10-21)
 Intermittent network failures from the build machine to `*.supabase.co` (connect

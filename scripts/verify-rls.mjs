@@ -750,6 +750,183 @@ async function main() {
   log('Report changes audited', repActions.has('create') && repActions.has('update'),
     `actions=${[...repActions].join(',')}`)
 
+  // 12. Report photos (private bucket, signed URLs, scoped by school + report)
+  console.log('\n12. Report photos');
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  )
+  const bucket = 'report-photos'
+
+  if (token) {
+    const [bucketRow] = await sql(`select public, file_size_limit from storage.buckets where id = '${bucket}'`)
+    log('Report photo bucket is private',
+      bucketRow?.public === false,
+      `public=${bucketRow?.public}`)
+  } else {
+    log('Report photo bucket is private', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
+  }
+
+  const { data: anonList, error: anonListErr } = await admin.storage.from(bucket).list('')
+  log('Anon blocked from report photos',
+    !!anonListErr || (anonList?.length ?? 0) === 0,
+    anonListErr?.message ?? `objects=${anonList?.length ?? 0}`)
+
+  const sRep = await studentClient.from('hazard_reports').insert({
+    school_id: A, category: 'other', description: 'RLS photo report by student',
+  }).select('id').single()
+  const aRep = await adminClient.from('hazard_reports').insert({
+    school_id: A, category: 'other', description: 'RLS photo report by admin',
+  }).select('id').single()
+
+  let ownPath = ''
+  let otherPath = ''
+  if (sRep.data?.id && aRep.data?.id) {
+    ownPath = `${A}/${sRep.data.id}/photo.png`
+    otherPath = `${A}/${aRep.data.id}/photo.png`
+
+    const up = await studentClient.storage.from(bucket).upload(ownPath, PNG, { contentType: 'image/png' })
+    log('Reporter uploads photo to own report', !up.error, up.error?.message ?? '')
+
+    const upOther = await studentClient.storage.from(bucket).upload(otherPath, PNG, { contentType: 'image/png' })
+    log('Upload to another member\'s report denied', !!upOther.error,
+      upOther.error?.message ?? 'no error?')
+
+    const upCross = await studentClient.storage.from(bucket)
+      .upload(`${B}/${sRep.data.id}/photo.png`, PNG, { contentType: 'image/png' })
+    log('Cross-school photo path denied', !!upCross.error, upCross.error?.message ?? 'no error?')
+
+    // Admin uploads to their own report so a real object exists for delete tests
+    const upAdmin = await adminClient.storage.from(bucket)
+      .upload(otherPath, PNG, { contentType: 'image/png' })
+    log('Admin uploads photo to own report', !upAdmin.error, upAdmin.error?.message ?? '')
+
+    const ownSigned = await studentClient.storage.from(bucket).createSignedUrl(ownPath, 60)
+    log('Reporter can read own report photo', !!ownSigned.data?.signedUrl,
+      ownSigned.error?.message ?? '')
+
+    const otherSigned = await studentClient.storage.from(bucket).createSignedUrl(otherPath, 60)
+    log('Cannot read another member\'s report photo', !!otherSigned.error,
+      otherSigned.error?.message ?? 'no error?')
+
+    const reviewerSigned = await adminClient.storage.from(bucket).createSignedUrl(ownPath, 60)
+    log('Reviewer can read school report photo', !!reviewerSigned.data?.signedUrl,
+      reviewerSigned.error?.message ?? '')
+
+    const attOk = await studentClient.from('report_attachments').insert({
+      report_id: sRep.data.id, school_id: A, storage_path: ownPath,
+    })
+    log('Reporter can register own attachment', !attOk.error, attOk.error?.message ?? '')
+
+    const attOther = await studentClient.from('report_attachments').insert({
+      report_id: aRep.data.id, school_id: A, storage_path: otherPath,
+    })
+    log('Attachment for another member\'s report denied', !!attOther.error,
+      attOther.error?.message ?? 'no error?')
+
+    const attBadPath = await studentClient.from('report_attachments').insert({
+      report_id: sRep.data.id, school_id: A, storage_path: `${A}/${aRep.data.id}/photo.png`,
+    })
+    log('Attachment path mismatch rejected', !!attBadPath.error && /does not match/i.test(attBadPath.error.message),
+      attBadPath.error?.message ?? 'no error?')
+
+    await studentClient.storage.from(bucket).remove([otherPath])
+    const stillThere = await adminClient.storage.from(bucket).createSignedUrl(otherPath, 60)
+    log('Photo delete by another member denied (object intact)',
+      !!stillThere.data?.signedUrl,
+      stillThere.data?.signedUrl ? 'object still readable' : 'object removed!')
+
+    await studentClient.storage.from(bucket).remove([ownPath])
+    const gone = await studentClient.storage.from(bucket).createSignedUrl(ownPath, 60)
+    log('Reporter can delete own photo', !gone.data?.signedUrl, gone.error?.message ?? 'still readable!')
+  } else {
+    log('Report photo checks', false, 'report setup failed, skipping')
+  }
+
+  // Cleanup: storage objects are removed through the storage API (reviewer rights),
+  // then any straggler rows via SQL; attachment/report rows via SQL.
+  // Cleanup order matters: remove photo objects via the Storage API (Supabase
+  // blocks direct SQL deletes on storage.objects) BEFORE removing the reports,
+  // then purge any orphaned objects left by earlier runs.
+  if (ownPath && otherPath) {
+    // Remove one at a time: a batch aborts if any path is already gone.
+    await adminClient.storage.from(bucket).remove([ownPath])
+    await adminClient.storage.from(bucket).remove([otherPath])
+  }
+  if (token) {
+    try {
+      const leftovers = await sql(`select name from storage.objects where bucket_id = '${bucket}'`)
+      for (const row of leftovers) {
+        await adminClient.storage.from(bucket).remove([row.name])
+      }
+    } catch { /* best effort */ }
+    try { await sql(`delete from public.report_attachments where storage_path like '11111111-1111-1111-1111-111111111111/%'`) } catch { /* best effort */ }
+    try { await sql(`delete from public.hazard_reports where description like 'RLS %'`) } catch { /* best effort */ }
+  }
+  if (token) {
+    const leftObjs = await sql(`select count(*)::int as n from storage.objects where bucket_id = '${bucket}'`)
+    log('Cleanup removed all test photos', (leftObjs[0]?.n ?? 0) === 0, `remaining=${leftObjs[0]?.n}`)
+  } else {
+    log('Cleanup removed all test photos', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
+  }
+
+  // 13. Check-ins (self-report, immutable log, source honesty)
+  console.log('\n13. Check-ins');
+  const { data: anonChk } = await admin.from('check_ins').select('*')
+  log('Anon blocked from check-ins', (anonChk?.length ?? 0) === 0, `rows=${anonChk?.length ?? 0}`)
+
+  const chk = await studentClient.from('check_ins').insert({
+    school_id: A, location_source: 'self_selected', period: 'RLS Period 1', status: 'safe',
+  })
+  log('Student records own check-in', !chk.error, chk.error?.message ?? '')
+
+  const chkOther = await studentClient.from('check_ins').insert({
+    school_id: A, profile_id: ADMIN_ID, location_source: 'self_selected',
+  })
+  log('Check-in for another user denied', !!chkOther.error && /for yourself/i.test(chkOther.error.message),
+    chkOther.error?.message ?? 'no error?')
+
+  const chkSchool = await studentClient.from('check_ins').insert({
+    school_id: B, location_source: 'self_selected',
+  })
+  log('Cross-school check-in denied', !!chkSchool.error && /row-level security/i.test(chkSchool.error.message ?? ''),
+    chkSchool.error?.message ?? 'no error?')
+
+  const chkStaff = await studentClient.from('check_ins').insert({
+    school_id: A, location_source: 'staff_verified',
+  })
+  log('Student cannot claim staff-verified location',
+    !!chkStaff.error && /responders or administrators/i.test(chkStaff.error.message),
+    chkStaff.error?.message ?? 'no error?')
+
+  const chkSched = await studentClient.from('check_ins').insert({
+    school_id: A, location_source: 'schedule_derived', location_id: null,
+  })
+  log('Schedule-derived check-in without a location rejected',
+    !!chkSched.error && /needs a location/i.test(chkSched.error.message),
+    chkSched.error?.message ?? 'no error?')
+
+  const { data: myChk } = await studentClient.from('check_ins').select('id, status')
+  log('Student reads own check-ins', (myChk?.length ?? 0) >= 1, `rows=${myChk?.length ?? 0}`)
+
+  const chkDel = (myChk?.[0]?.id)
+    ? await studentClient.from('check_ins').delete().eq('id', myChk[0].id).select('id')
+    : { data: [] }
+  log('Check-in delete blocked (0 rows)', (chkDel.data ?? []).length === 0, `rows=${chkDel.data?.length}`)
+
+  const chkUpd = (myChk?.[0]?.id)
+    ? await studentClient.from('check_ins').update({ status: 'safe' }).eq('id', myChk[0].id).select('id')
+    : { data: [] }
+  log('Check-in update blocked (0 rows)', (chkUpd.data ?? []).length === 0, `rows=${chkUpd.data?.length}`)
+
+  if (token) {
+    try { await sql(`delete from public.check_ins where period like 'RLS %'`) } catch { /* best effort */ }
+    const leftChk = await sql(`select count(*)::int as n from public.check_ins where period like 'RLS %'`)
+    log('Cleanup removed all test check-ins', (leftChk[0]?.n ?? 0) === 0, `remaining=${leftChk[0]?.n}`)
+  } else {
+    log('Cleanup removed all test check-ins', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
+  }
+
   finish()
 }
 

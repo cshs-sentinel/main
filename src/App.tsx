@@ -7,12 +7,16 @@ import RoleGuard from './features/auth/RoleGuard'
 import SignUp from './features/auth/SignUp'
 import AdminUsers from './features/admin/AdminUsers'
 import AdminSchedules from './features/admin/AdminSchedules'
+import AdminReports from './features/admin/AdminReports'
 import Locations from './features/admin/Locations'
 import Schedule from './features/schedule/Schedule'
+import Reports from './features/reports/Reports'
+import CheckIn from './features/checkin/CheckIn'
 import { supabase } from './lib/supabase'
 
 function Home() {
   const { role } = useAuth()
+  const isReviewer = role === 'responder' || role === 'administrator'
 
   return (
     <main className="auth-page">
@@ -20,8 +24,19 @@ function Home() {
       <p>Smart Emergency Network for Tracking Incidents, Notifications, Evaluation, and Logistics.</p>
       <p>You are signed in{role ? ` as ${role}` : ''}.</p>
       <p>
+        <Link to="/check-in">Safety check-in</Link>
+      </p>
+      <p>
         <Link to="/schedule">My schedule</Link>
       </p>
+      <p>
+        <Link to="/reports">Report a hazard</Link>
+      </p>
+      {isReviewer && (
+        <p>
+          <Link to="/admin/reports">Report review</Link>
+        </p>
+      )}
       {role === 'administrator' && (
         <>
           <p>
@@ -52,6 +67,11 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Home />} />
             <Route path="/schedule" element={<Schedule />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/check-in" element={<CheckIn />} />
+            <Route element={<RoleGuard allowed={['responder', 'administrator']} />}>
+              <Route path="/admin/reports" element={<AdminReports />} />
+            </Route>
             <Route element={<RoleGuard allowed={['administrator']} />}>
               <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="/admin/structure" element={<Locations />} />

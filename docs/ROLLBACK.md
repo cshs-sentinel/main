@@ -126,6 +126,59 @@ create policy "hazard_reports_select_school"
   using (school_id = public.my_school_id());
 ```
 
+For `20261021000009_report_photos.sql` … `20261021000012_check_ins.sql`
+(Phase 3 storage, attachments and check-ins) — roll back in reverse order:
+
+```sql
+-- 0012 check-ins
+drop trigger if exists check_ins_validate on public.check_ins;
+drop function if exists public.validate_check_in();
+drop policy if exists check_ins_select_own_or_reviewer on public.check_ins;
+drop policy if exists check_ins_insert_own on public.check_ins;
+drop table if exists public.check_ins;
+
+-- 0011 photo read/delete scope (restores the 0009 policies)
+drop policy if exists report_photos_select_authorized on storage.objects;
+drop policy if exists report_photos_delete_own on storage.objects;
+create policy "report_photos_select_authorized"
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'report-photos'
+    and exists (
+      select 1 from public.hazard_reports r
+      where r.id::text = (storage.foldername(name))[2]
+        and r.school_id::text = (storage.foldername(name))[1]
+    )
+  );
+create policy "report_photos_delete_own"
+  on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'report-photos'
+    and exists (
+      select 1 from public.hazard_reports r
+      where r.id::text = (storage.foldername(name))[2]
+        and (r.reporter_id = auth.uid() or public.is_reviewer())
+    )
+  );
+
+-- 0010 filename fix (superseded by dropping the function in 0009 rollback)
+drop function if exists public.validate_report_attachment();
+
+-- 0009 attachments, policies and bucket
+-- NOTE: storage objects cannot be deleted with SQL. Empty the bucket through the
+-- Storage API first (a reviewer account can remove every object), otherwise the
+-- bucket can only be dropped together with its objects.
+drop trigger if exists report_attachments_validate on public.report_attachments;
+drop function if exists public.validate_report_attachment();
+drop policy if exists report_attachments_select_report_scope on public.report_attachments;
+drop policy if exists report_attachments_insert_reporter on public.report_attachments;
+drop policy if exists report_attachments_delete_own on public.report_attachments;
+drop table if exists public.report_attachments;
+drop policy if exists report_photos_insert_own on storage.objects;
+-- delete the bucket only after its objects are removed via the Storage API:
+-- delete from storage.buckets where id = 'report-photos';
+```
+
 ### Option B: Point-in-time Restore
 
 If the project plan supports PITR:

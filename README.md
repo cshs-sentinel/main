@@ -36,10 +36,10 @@ is never committed.
 
 ## Current state
 
-Phases 1–2 complete (Gate 1 and Gate 2 approved). Phase 3 (hazard reports) in
-progress: schema, RLS, and the review workflow are implemented and verified
-(migrations 0001–0008); the report UI, private photo storage, and Gate 3 evidence
-remain. See `docs/DEVELOPMENT_LOG.md` for the per-task record.
+Phases 1–2 complete (Gate 1 and Gate 2 approved). Phase 3 (hazard reports, private
+report photos, safety check-ins) is implemented and externally verified
+(migrations 0001–0012); the Gate 3 evidence pack is in `docs/GATE3_EVIDENCE.md`.
+See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 
 ## Documentation
 
@@ -47,6 +47,7 @@ remain. See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 - `docs/ROLLBACK.md` — migration rollback SQL and recovery options
 - `docs/DEVELOPMENT_LOG.md` — per-task log
 - `docs/GATE2_EVIDENCE.md` — Gate 2 evidence pack
+- `docs/GATE3_EVIDENCE.md` — Gate 3 evidence pack
 - `docs/FIRST_ADMIN.md` — first administrator provisioning
 - `AGENTS.md` — project rules for contributors
 - `SENTINEL_OPENCODE_VIBE_CODING_GUIDE.md` — phased roadmap and approval gates

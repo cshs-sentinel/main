@@ -257,7 +257,8 @@ body {
 }
 
 .loc-form,
-.sched-form {
+.sched-form,
+.rep-form {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
@@ -269,13 +270,15 @@ body {
 }
 
 .loc-form h2,
-.sched-form h2 {
+.sched-form h2,
+.rep-form h2 {
   font-size: 1rem;
   margin: 0 0 0.375rem;
 }
 
 .loc-form label,
-.sched-form label {
+.sched-form label,
+.rep-form label {
   font-size: 0.8125rem;
   font-weight: 500;
   margin-top: 0.375rem;
@@ -285,7 +288,10 @@ body {
 .loc-form select,
 .loc-form textarea,
 .sched-form input,
-.sched-form select {
+.sched-form select,
+.rep-form input,
+.rep-form select,
+.rep-form textarea {
   font: inherit;
   font-size: 0.9375rem;
   padding: 0.5rem 0.625rem;
@@ -498,4 +504,52 @@ body {
   margin-left: auto;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+/* Hazard reports */
+.rep-notice {
+  font-size: 0.8125rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.rep-status {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.rep-status-open {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.rep-status-acknowledged {
+  color: var(--text);
+}
+
+.rep-status-resolved {
+  color: var(--text-muted);
+}
+
+.rep-description {
+  margin: 0.375rem 0;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.rep-photo-link {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--accent);
 }

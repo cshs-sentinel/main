@@ -22,6 +22,25 @@ drop type if exists public.app_role;
 
 3. Verify objects dropped via `supabase migration list` or dashboard Schema Viewer.
 
+For `20261021000002_school_structure.sql`:
+
+```sql
+-- Rollback school-structure migration (run only if explicitly approved)
+drop trigger if exists buildings_audit on public.buildings;
+drop trigger if exists floors_audit on public.floors;
+drop trigger if exists rooms_audit on public.rooms;
+drop trigger if exists buildings_set_updated_at on public.buildings;
+drop trigger if exists floors_set_updated_at on public.floors;
+drop trigger if exists rooms_set_updated_at on public.rooms;
+drop function if exists public.audit_school_structure();
+drop function if exists public.set_updated_at();
+drop table if exists public.rooms;
+drop table if exists public.floors;
+alter table public.profiles drop column if exists building_id;
+drop table if exists public.buildings;
+-- Note: dropping buildings also removes profiles.building_id references first
+```
+
 ### Option B: Point-in-time Restore
 
 If the project plan supports PITR:

@@ -131,6 +131,91 @@ async function main() {
     .eq('action', 'role_changed')
   log('Audit rows for role changes', (auditRows?.length ?? 0) >= 2, `rows=${auditRows?.length}`)
 
+  // 8. School structure RLS
+  console.log('\n8. School structure (buildings/floors/rooms)');
+  const { data: anonBldg } = await admin.from('buildings').select('*')
+  log('Anon blocked from buildings', (anonBldg?.length ?? 0) === 0, `rows=${anonBldg?.length ?? 0}`)
+  const { data: anonRoom } = await admin.from('rooms').select('*')
+  log('Anon blocked from rooms', (anonRoom?.length ?? 0) === 0, `rows=${anonRoom?.length ?? 0}`)
+
+  const { data: sBldgRead, error: sBldgReadErr } = await studentClient.from('buildings').select('id')
+  log('Student can read buildings', !sBldgReadErr, sBldgReadErr?.message ?? `rows=${sBldgRead?.length}`)
+
+  const { error: sBldgInsert } = await studentClient
+    .from('buildings')
+    .insert({ name: 'RLS-Should-Fail' })
+  log('Student insert denied', !!sBldgInsert, sBldgInsert?.message ?? 'no error?')
+
+  const { error: sRoomInsert } = await studentClient
+    .from('rooms')
+    .insert({ floor_id: '00000000-0000-0000-0000-000000000000', code: 'X', name: 'X' })
+  log('Student room insert denied', !!sRoomInsert, sRoomInsert?.message ?? 'no error?')
+
+  // Admin full CRUD on a synthetic building
+  const { data: created, error: aCreateErr } = await adminClient
+    .from('buildings')
+    .insert({ name: 'RLS-Test-Building' })
+    .select('id, name')
+    .single()
+  log('Admin creates building', !aCreateErr && created?.name === 'RLS-Test-Building',
+    aCreateErr?.message ?? '')
+
+  if (created) {
+    const { data: updated, error: aUpdErr } = await adminClient
+      .from('buildings')
+      .update({ name: 'RLS-Test-Building-Renamed' })
+      .eq('id', created.id)
+      .select('name')
+      .single()
+    log('Admin updates building', !aUpdErr && updated?.name === 'RLS-Test-Building-Renamed',
+      aUpdErr?.message ?? '')
+
+    const { data: sUpdRes, error: sUpdErr } = await studentClient
+      .from('buildings')
+      .update({ name: 'Hijacked' })
+      .eq('id', created.id)
+      .select('id, name')
+    log('Student update blocked', !sUpdErr && (sUpdRes?.length ?? 0) === 0,
+      sUpdErr?.message ?? `rows=${sUpdRes?.length}`)
+
+    const { data: sDelRes, error: sDelErr } = await studentClient
+      .from('buildings')
+      .delete()
+      .eq('id', created.id)
+      .select('id')
+    log('Student delete blocked', !sDelErr && (sDelRes?.length ?? 0) === 0,
+      sDelErr?.message ?? `rows=${sDelRes?.length}`)
+
+    // Row must be intact after student attempts
+    const { data: intact } = await adminClient
+      .from('buildings')
+      .select('name')
+      .eq('id', created.id)
+      .single()
+    log('Building intact after student attempts',
+      intact?.name === 'RLS-Test-Building-Renamed', `name=${intact?.name ?? 'missing'}`)
+
+    const { error: aDelErr } = await adminClient
+      .from('buildings')
+      .delete()
+      .eq('id', created.id)
+    log('Admin deletes building', !aDelErr, aDelErr?.message ?? '')
+  } else {
+    log('Admin updates building', false, 'create failed, skipping')
+    log('Student update blocked', false, 'create failed, skipping')
+    log('Student delete blocked', false, 'create failed, skipping')
+    log('Building intact after student attempts', false, 'create failed, skipping')
+    log('Admin deletes building', false, 'create failed, skipping')
+  }
+
+  const { data: structAudit } = await adminClient
+    .from('audit_logs')
+    .select('action, entity_type')
+    .eq('entity_type', 'buildings')
+  const actions = new Set((structAudit ?? []).map((r) => r.action))
+  log('Structure changes audited', actions.has('create') && actions.has('delete'),
+    `actions=${[...actions].join(',')}`)
+
   finish()
 }
 

@@ -551,234 +551,225 @@ async function main() {
   log('Schedule changes audited', schedActions.has('create') && schedActions.has('update'),
     `actions=${[...schedActions].join(',')}`)
 
-  // 11. Hazard reports (submission + reviewer workflow, no client delete)
-  console.log('\n11. Hazard reports');
-  const { data: anonRep } = await admin.from('hazard_reports').select('*')
-  log('Anon blocked from hazard_reports', (anonRep?.length ?? 0) === 0, `rows=${anonRep?.length ?? 0}`)
+  // 11. Submissions (the school's four data categories; students submit only,
+  //     staff read and review; no client delete)
+  console.log('\n11. Submissions');
+  const { data: anonSub } = await admin.from('submissions').select('*')
+  log('Anon blocked from submissions', (anonSub?.length ?? 0) === 0, `rows=${anonSub?.length ?? 0}`)
 
-  // Pre-clean: remove leftover synthetic reports from a failed prior run; archive leftover room
   if (token) {
-    try { await sql(`delete from public.hazard_reports where description like 'RLS %'`) } catch { /* best effort */ }
+    try { await sql(`delete from public.submissions where message like 'RLS %'`) } catch { /* best effort */ }
   }
   await adminClient.from('locations')
     .update({ status: 'archived' })
     .eq('status', 'active')
     .eq('name', 'RLS Report Room')
 
-  const repRoom = await mkLoc({
-    school_id: A, name: 'RLS Report Room', category_id: catId('Room'), environment: 'indoor',
-  })
-  log('Admin creates report room', !repRoom.error, repRoom.error?.message ?? '')
-
-  if (repRoom.data) {
-    const mkRep = (fields) =>
-      studentClient.from('hazard_reports').insert({ school_id: A, location_id: repRoom.data.id, ...fields })
-
-    const r1 = await mkRep({ category: 'safety_hazard', description: 'RLS Loose handrail by the science lab' })
-      .select('id').single()
-    log('Student files a hazard report', !r1.error && !!r1.data?.id, r1.error?.message ?? '')
-
-    const badCat = await mkRep({ category: 'weapon', description: 'RLS invalid category attempt' })
-    log('Invalid category rejected', !!badCat.error && /invalid report category/i.test(badCat.error.message),
-      badCat.error?.message ?? 'no error?')
-
-    const badDesc = await mkRep({ category: 'other', description: 'x' })
-    log('Short description rejected', !!badDesc.error && /between 3 and 2000/i.test(badDesc.error.message),
-      badDesc.error?.message ?? 'no error?')
-
-    const badStatus = await mkRep({ category: 'other', description: 'RLS status shortcut attempt', status: 'resolved' })
-    log('Pre-set status rejected', !!badStatus.error && /start as open/i.test(badStatus.error.message),
-      badStatus.error?.message ?? 'no error?')
-
-    const asOther = await studentClient.from('hazard_reports').insert({
-      school_id: A, reporter_id: ADMIN_ID, category: 'other', description: 'RLS filed as admin attempt',
+  // Use a location that really exists and is active in this school: the insert
+  // policy refuses any location outside the caller's school (including one that
+  // does not exist at all), so the test must not invent an id.
+  const { data: activeLocs } = await adminClient
+    .from('locations')
+    .select('id')
+    .eq('status', 'active')
+    .limit(1)
+  let usableLocation = activeLocs?.[0]?.id
+  if (!usableLocation) {
+    const repRoom = await mkLoc({
+      school_id: A, name: 'RLS Report Room', category_id: catId('Room'), environment: 'indoor',
     })
-    log('Filing as another user rejected', !!asOther.error && /filed as yourself/i.test(asOther.error.message),
+    log('Admin creates submission room', !repRoom.error, repRoom.error?.message ?? '')
+    usableLocation = repRoom.data?.id
+  } else {
+    log('Uses an existing active location for submission tests', true, `location=${usableLocation}`)
+  }
+
+  if (usableLocation) {
+    const mkSub = (fields) =>
+      studentClient.from('submissions').insert({
+        school_id: A, location_id: usableLocation, ...fields,
+      })
+
+    // --- a student may submit.
+    // NOTE: no .select() after insert on purpose. Returning the inserted row
+    // makes PostgREST evaluate the SELECT policy too, and a student has no
+    // SELECT policy on submissions (students may send only) - the insert
+    // itself succeeds, the "read it back" part is what gets refused.
+    const sentiment = await mkSub({
+      kind: 'sentiment', sub_type: 'stressed', emotion: 'stressed', stress_level: 4,
+      message: 'RLS exam week is piling up and I am finding it hard to sleep.',
+    })
+    log('Student submits a sentiment submission', !sentiment.error,
+      sentiment.error?.message ?? '')
+
+    const hazard = await mkSub({
+      kind: 'incident_hazard', sub_type: 'bullying',
+      message: 'RLS a student is being bullied near the canteen every break.',
+    })
+    log('Student submits an incident/hazard submission', !hazard.error,
+      hazard.error?.message ?? '')
+
+    const observation = await mkSub({
+      kind: 'observation', sub_type: 'suggestion',
+      message: 'RLS suggestion: add more shade over the basketball court.',
+    })
+    log('Student submits an observation', !observation.error,
+      observation.error?.message ?? '')
+
+    // the rows are really there - staff can read them back
+    const { data: storedSubs } = await adminClient.from('submissions')
+      .select('id, kind, sub_type, stress_level')
+      .like('message', 'RLS %')
+    log('Submitted rows are stored and readable by staff',
+      (storedSubs?.length ?? 0) >= 3,
+      `rows=${storedSubs?.length ?? 0}`)
+
+    // --- the new access rule: a student cannot read submissions, not even their own
+    const studentRead = await studentClient.from('submissions').select('id')
+    log('Student cannot read submissions (send only)', (studentRead.data ?? []).length === 0,
+      `rows=${studentRead.data?.length ?? 0}`)
+
+    const studentReadOwn = sentiment.data?.id
+      ? await studentClient.from('submissions').select('id').eq('id', sentiment.data.id)
+      : { data: [] }
+    log('Student cannot read their own submission', (studentReadOwn.data ?? []).length === 0,
+      `rows=${studentReadOwn.data?.length ?? 0}`)
+
+    const staffRead = await adminClient.from('submissions').select('id')
+    log('Staff can read school submissions', (staffRead.data ?? []).length > 0,
+      `rows=${staffRead.data?.length ?? 0}`)
+
+    // --- students cannot review, update or delete
+    const studentUpdate = hazard.data?.id
+      ? await studentClient.from('submissions').update({ status: 'acknowledged' })
+        .eq('id', hazard.data.id).select('id')
+      : { data: [] }
+    log('Student cannot acknowledge a submission (0 rows)', (studentUpdate.data ?? []).length === 0,
+      `rows=${studentUpdate.data?.length ?? 0}`)
+
+    const studentDelete = hazard.data?.id
+      ? await studentClient.from('submissions').delete().eq('id', hazard.data.id).select('id')
+      : { data: [] }
+    log('Student cannot delete a submission (0 rows)', (studentDelete.data ?? []).length === 0,
+      `rows=${studentDelete.data?.length ?? 0}`)
+
+    // --- validation
+    const noStress = await mkSub({
+      kind: 'sentiment', sub_type: 'sad', emotion: 'sad',
+      message: 'RLS sentiment without a stress level',
+    })
+    log('Sentiment submission without a stress level rejected',
+      !!noStress.error && /stress level/i.test(noStress.error.message),
+      noStress.error?.message ?? 'no error?')
+
+    const badKind = await mkSub({
+      kind: 'not_a_kind', sub_type: 'sad', message: 'RLS invalid kind',
+    })
+    log('Invalid category rejected', !!badKind.error, badKind.error?.message ?? 'no error?')
+
+    const badSubType = await mkSub({
+      kind: 'incident_hazard', sub_type: 'not_a_type', message: 'RLS invalid sub type',
+    })
+    log('Invalid sub-type rejected', !!badSubType.error, badSubType.error?.message ?? 'no error?')
+
+    const stressOnHazard = await mkSub({
+      kind: 'incident_hazard', sub_type: 'bullying', stress_level: 3,
+      message: 'RLS stress level on a hazard submission',
+    })
+    log('Stress level rejected outside sentiment submissions',
+      !!stressOnHazard.error && /only applies to sentiment/i.test(stressOnHazard.error.message),
+      stressOnHazard.error?.message ?? 'no error?')
+
+    const shortMessage = await mkSub({
+      kind: 'observation', sub_type: 'report', message: 'x',
+    })
+    log('Too-short message rejected', !!shortMessage.error, shortMessage.error?.message ?? 'no error?')
+
+    const asOther = await studentClient.from('submissions').insert({
+      school_id: A, kind: 'observation', sub_type: 'report', message: 'RLS filed as someone else',
+      submitted_by: ADMIN_ID,
+    })
+    log('Submission on behalf of someone else rejected',
+      !!asOther.error && /by yourself/i.test(asOther.error.message),
       asOther.error?.message ?? 'no error?')
 
-    // Read scope: reporter + own-school reviewers only (ARCHITECTURE section 1.1/1.2)
-    const aReport = await adminClient.from('hazard_reports').insert({
-      school_id: A, category: 'other', description: 'RLS admin filed report',
-    }).select('id').single()
-    log('Admin files a report as themselves', !aReport.error && !!aReport.data?.id, aReport.error?.message ?? '')
-
-    const ownRead = r1.data
-      ? await studentClient.from('hazard_reports').select('id').eq('id', r1.data.id)
-      : { data: [] }
-    log('Reporter can read own report', (ownRead.data ?? []).length === 1, `rows=${ownRead.data?.length}`)
-
-    const otherRead = aReport.data
-      ? await studentClient.from('hazard_reports').select('id').eq('id', aReport.data.id)
-      : { data: [] }
-    log('Student cannot read another member\'s report', (otherRead.data ?? []).length === 0,
-      `rows=${otherRead.data?.length}`)
-
-    const revRead = r1.data
-      ? await adminClient.from('hazard_reports').select('id').eq('id', r1.data.id)
-      : { data: [] }
-    log('Reviewer can read school reports', (revRead.data ?? []).length === 1, `rows=${revRead.data?.length}`)
-
-    const xSchool = await studentClient.from('hazard_reports').insert({
-      school_id: B, category: 'other', description: 'RLS cross school report',
+    const xSchool = await studentClient.from('submissions').insert({
+      school_id: B, kind: 'observation', sub_type: 'report', message: 'RLS cross school submission',
     })
-    log('Cross-school report insert denied', !!xSchool.error && /row-level security/i.test(xSchool.error.message ?? ''),
+    log('Cross-school submission denied',
+      !!xSchool.error && /row-level security/i.test(xSchool.error.message ?? ''),
       xSchool.error?.message ?? 'no error?')
 
-    const sUpd = r1.data
-      ? await studentClient.from('hazard_reports').update({ status: 'acknowledged' }).eq('id', r1.data.id).select('id')
-      : { data: [] }
-    log('Non-reviewer status update blocked (0 rows)', (sUpd.data ?? []).length === 0, `rows=${sUpd.data?.length}`)
-
-    const sDel = r1.data
-      ? await studentClient.from('hazard_reports').delete().eq('id', r1.data.id).select('id')
-      : { data: [] }
-    log('Student report delete blocked (0 rows)', (sDel.data ?? []).length === 0, `rows=${sDel.data?.length}`)
-
-    const aDel = r1.data
-      ? await adminClient.from('hazard_reports').delete().eq('id', r1.data.id).select('id')
-      : { data: [] }
-    log('Admin report delete blocked — retained (0 rows)', (aDel.data ?? []).length === 0, `rows=${aDel.data?.length}`)
-
-    const intact = r1.data
-      ? await adminClient.from('hazard_reports').select('description, status').eq('id', r1.data.id).single()
-      : { data: null }
-    log('Report intact after delete attempts',
-      intact.data?.description === 'RLS Loose handrail by the science lab',
-      `status=${intact.data?.status ?? 'missing'}`)
-
-    const r2 = await mkRep({ category: 'other', description: 'RLS flickering corridor light' }).select('id').single()
-    log('Second report filed', !r2.error && !!r2.data?.id, r2.error?.message ?? '')
-
-    // Reviewer path: promote student to responder, exercise the workflow, revert
-    // Assert on the resulting role (state), not on RPC transport: a dropped
-    // response can surface as a transport error even though the statement ran.
-    await adminClient.rpc('admin_set_user_role', {
-      target_user_id: STUDENT_ID, new_role: 'responder',
+    const badLocation = await studentClient.from('submissions').insert({
+      school_id: A, kind: 'observation', sub_type: 'report',
+      message: 'RLS submission against a location that does not exist',
+      location_id: '11111111-2222-3333-4444-555555555555',
     })
-    const { data: promoProf } = await studentClient
-      .from('profiles').select('role').eq('id', STUDENT_ID).single()
-    log('Student promoted to responder (test)', promoProf?.role === 'responder',
-      `role=${promoProf?.role ?? 'unknown'}`)
+    log('Submission against an unknown location denied', !!badLocation.error,
+      badLocation.error?.message ?? 'no error?')
 
-    const respRead = r1.data
-      ? await studentClient.from('hazard_reports').select('id').eq('id', r1.data.id)
-      : { data: [] }
-    log('Responder can read school reports', (respRead.data ?? []).length === 1, `rows=${respRead.data?.length}`)
+    // --- staff review workflow (ids come from the staff read-back above: a
+    // student cannot read the row back, so the ids are fetched as staff)
+    const hazardRow = (storedSubs ?? []).find((row) => row.kind === 'incident_hazard')
+    if (hazardRow?.id) {
+      const ack = await adminClient.from('submissions')
+        .update({ status: 'acknowledged', acknowledged_at: new Date().toISOString() })
+        .eq('id', hazardRow.id).select('id, status')
+      log('Staff acknowledges a submission', (ack.data ?? []).length === 1
+        && ack.data?.[0]?.status === 'acknowledged', ack.error?.message ?? '')
 
-    const ack = r1.data
-      ? await studentClient.from('hazard_reports').update({ status: 'acknowledged' }).eq('id', r1.data.id).select('id, status')
-      : { data: [] }
-    log('Responder acknowledges report',
-      (ack.data ?? []).length === 1 && ack.data[0]?.status === 'acknowledged',
-      `status=${ack.data?.[0]?.status ?? 'missing'}`)
+      const resolved = await adminClient.from('submissions')
+        .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+        .eq('id', hazardRow.id).select('id, status')
+      log('Staff resolves a submission', (resolved.data ?? []).length === 1
+        && resolved.data?.[0]?.status === 'resolved', resolved.error?.message ?? '')
 
-    const badTransition = r2.data
-      ? await studentClient.from('hazard_reports').update({ status: 'resolved' }).eq('id', r2.data.id).select('id')
-      : { error: null }
-    log('Direct open->resolved rejected',
-      !!badTransition.error && /invalid status transition/i.test(badTransition.error.message ?? ''),
-      badTransition.error?.message ?? 'no error?')
+      const staffDelete = await adminClient.from('submissions')
+        .delete().eq('id', hazardRow.id).select('id')
+      log('Client cannot delete a submission (0 rows)', (staffDelete.data ?? []).length === 0,
+        `rows=${staffDelete.data?.length ?? 0}`)
 
-    const editDesc = r1.data
-      ? await studentClient.from('hazard_reports').update({ description: 'RLS edited description' }).eq('id', r1.data.id)
-      : { error: null }
-    log('Report details immutable after submission',
-      !!editDesc.error && /cannot be changed/i.test(editDesc.error.message ?? ''),
-      editDesc.error?.message ?? 'no error?')
+      const stillThere = await adminClient.from('submissions')
+        .select('id, message').eq('id', hazardRow.id).single()
+      log('Submission is retained after the delete attempt', stillThere.data?.message?.includes('RLS'),
+        stillThere.error?.message ?? 'missing')
+    }
 
-    const resolve = r1.data
-      ? await studentClient.from('hazard_reports').update({ status: 'resolved' }).eq('id', r1.data.id).select('status')
-      : { data: [] }
-    log('Responder resolves report', resolve.data?.[0]?.status === 'resolved',
-      `status=${resolve.data?.[0]?.status ?? 'missing'}`)
-
+    // --- a teacher is staff and can read submissions
+    const teachPromo = await adminClient.rpc('admin_set_user_role', {
+      target_user_id: STUDENT_ID, new_role: 'teacher_staff',
+    })
+    const teacherRead = await studentClient.from('submissions').select('id')
+    log('Teacher can read submissions', !teachPromo.error && (teacherRead.data ?? []).length > 0,
+      teacherRead.error?.message ?? `rows=${teacherRead.data?.length ?? 0}`)
     await adminClient.rpc('admin_set_user_role', {
       target_user_id: STUDENT_ID, new_role: 'student',
     })
-    const { data: revertProf } = await studentClient
-      .from('profiles').select('role').eq('id', STUDENT_ID).single()
-    log('Responder reverted to student', revertProf?.role === 'student',
-      `role=${revertProf?.role ?? 'unknown'}`)
-
-    const afterRevert = r1.data
-      ? await studentClient.from('hazard_reports').update({ status: 'open' }).eq('id', r1.data.id).select('id')
-      : { data: [] }
-    log('Reverted student status update blocked (0 rows)', (afterRevert.data ?? []).length === 0,
-      `rows=${afterRevert.data?.length}`)
-
-    await adminClient.from('locations').update({ status: 'archived' }).eq('id', repRoom.data.id)
-    const onArch = await mkRep({ category: 'other', description: 'RLS report on archived room' })
-    log('Report on archived location rejected', !!onArch.error && /archived location/i.test(onArch.error.message),
-      onArch.error?.message ?? 'no error?')
-
-    // Cross-school reads + other-school location (token-gated: needs school B)
-    if (token) {
-      try {
-        await cleanupSchoolB()
-        await sql(`insert into public.schools (id, name) values ('${B}', 'RLS Other School')`)
-        await sql(`insert into public.location_categories (school_id, name, environment) values ('${B}', 'Building', 'indoor')`)
-        const [catB] = await sql(`select id from public.location_categories where school_id = '${B}' and name = 'Building'`)
-        const [locB] = await sql(`insert into public.locations (school_id, name, category_id, environment)
-          values ('${B}', 'RLS Hidden Report Building', '${catB.id}', 'indoor') returning id`)
-        const [repB] = await sql(`insert into public.hazard_reports (school_id, reporter_id, category, description)
-          values ('${B}', '${STUDENT_ID}', 'other', 'RLS report from other school') returning id`)
-
-        const aReadB = await adminClient.from('hazard_reports').select('id')
-        log('Admin A cannot read school B reports',
-          !(aReadB.data ?? []).some((r) => r.id === repB.id))
-        const sReadB = await studentClient.from('hazard_reports').select('id')
-        log('Student A cannot read school B reports',
-          !(sReadB.data ?? []).some((r) => r.id === repB.id))
-
-        const xLoc = await studentClient.from('hazard_reports').insert({
-          school_id: A, location_id: locB.id, category: 'other', description: 'RLS report pointing at other school',
-        })
-        log('Report on other-school location rejected',
-          !!xLoc.error && /different school/i.test(xLoc.error.message ?? ''),
-          xLoc.error?.message ?? 'no error?')
-
-        await sql(`delete from public.audit_logs where entity_type = 'hazard_reports'
-          and entity_id in (select id::text from public.hazard_reports where school_id = '${B}')`)
-        await sql(`delete from public.hazard_reports where school_id = '${B}'`)
-        await cleanupSchoolB()
-        const afterB = await sql(`select id from public.schools where id = '${B}'`)
-        log('School B reports cleaned up', afterB.length === 0)
-      } catch (e) {
-        log('School B report checks', false, e.message)
-        try {
-          await sql(`delete from public.hazard_reports where school_id = '${B}'`)
-          await cleanupSchoolB()
-        } catch { /* best effort */ }
-      }
-    } else {
-      log('School B report checks', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
-    }
   } else {
-    log('Report checks', false, 'room setup failed, skipping')
+    log('Submission checks', false, 'room setup failed, skipping')
   }
 
-  // Cleanup: reports have no client delete — token-gated removal of synthetic rows
+  // Cleanup: submissions have no client delete — token-gated removal of synthetic rows
   if (token) {
-    try { await sql(`delete from public.hazard_reports where description like 'RLS %'`) } catch { /* best effort */ }
+    try { await sql(`delete from public.submissions where message like 'RLS %'`) } catch { /* best effort */ }
   }
   await adminClient.from('locations')
     .update({ status: 'archived' })
     .eq('status', 'active')
     .eq('name', 'RLS Report Room')
   if (token) {
-    const leftRep = await adminClient.from('hazard_reports').select('id').like('description', 'RLS %')
-    log('Cleanup removed all test reports', (leftRep.data ?? []).length === 0,
-      `remaining=${leftRep.data?.length}`)
+    const leftSub = await adminClient.from('submissions').select('id').like('message', 'RLS %')
+    log('Cleanup removed all test submissions', (leftSub.data ?? []).length === 0,
+      `remaining=${leftSub.data?.length ?? 0}`)
   } else {
-    log('Cleanup removed all test reports', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
+    log('Cleanup removed all test submissions', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
   }
 
-  const repAudit = await adminClient.from('audit_logs').select('action, entity_type').eq('entity_type', 'hazard_reports')
-  const repActions = new Set((repAudit.data ?? []).map((r) => r.action))
-  log('Report changes audited', repActions.has('create') && repActions.has('update'),
-    `actions=${[...repActions].join(',')}`)
-
-  // 12. Report photos (private bucket, signed URLs, scoped by school + report)
+  const subAudit = await adminClient.from('audit_logs').select('action, entity_type').eq('entity_type', 'submissions')
+  const subActions = new Set((subAudit.data ?? []).map((r) => r.action))
+  log('Submission changes audited', subActions.has('create') && subActions.has('update'),
+    `actions=${[...subActions].join(',')}`)
+  // 12. Report photos (private bucket, signed URLs, staff read, submitter uploads)
   console.log('\n12. Report photos');
   const PNG = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -800,82 +791,84 @@ async function main() {
     !!anonListErr || (anonList?.length ?? 0) === 0,
     anonListErr?.message ?? `objects=${anonList?.length ?? 0}`)
 
-  const sRep = await studentClient.from('hazard_reports').insert({
-    school_id: A, category: 'other', description: 'RLS photo report by student',
-  }).select('id').single()
-  const aRep = await adminClient.from('hazard_reports').insert({
-    school_id: A, category: 'other', description: 'RLS photo report by admin',
-  }).select('id').single()
+  const sRep = await studentClient.from('submissions').insert({
+    school_id: A, kind: 'observation', sub_type: 'report',
+    message: 'RLS photo submission by student',
+  })
+  const aRep = await adminClient.from('submissions').insert({
+    school_id: A, kind: 'observation', sub_type: 'report',
+    message: 'RLS photo submission by admin',
+  })
+  // read the ids back as staff (students may not read submissions)
+  const { data: photoSubs } = await adminClient.from('submissions')
+    .select('id, message').like('message', 'RLS photo submission%')
+  const sRepId = photoSubs?.find((row) => row.message.includes('by student'))?.id
+  const aRepId = photoSubs?.find((row) => row.message.includes('by admin'))?.id
+  log('Photo test submissions created', !sRep.error && !aRep.error && Boolean(sRepId) && Boolean(aRepId),
+    sRep.error?.message ?? aRep.error?.message ?? '')
 
   let ownPath = ''
   let otherPath = ''
-  if (sRep.data?.id && aRep.data?.id) {
-    ownPath = `${A}/${sRep.data.id}/photo.png`
-    otherPath = `${A}/${aRep.data.id}/photo.png`
+  if (sRepId && aRepId) {
+    ownPath = `${A}/${sRepId}/photo.png`
+    otherPath = `${A}/${aRepId}/photo.png`
 
     const up = await studentClient.storage.from(bucket).upload(ownPath, PNG, { contentType: 'image/png' })
-    log('Reporter uploads photo to own report', !up.error, up.error?.message ?? '')
+    log('Submitter uploads a photo to their own submission', !up.error, up.error?.message ?? '')
 
     const upOther = await studentClient.storage.from(bucket).upload(otherPath, PNG, { contentType: 'image/png' })
-    log('Upload to another member\'s report denied', !!upOther.error,
+    log('Upload to another member\'s submission denied', !!upOther.error,
       upOther.error?.message ?? 'no error?')
 
     const upCross = await studentClient.storage.from(bucket)
-      .upload(`${B}/${sRep.data.id}/photo.png`, PNG, { contentType: 'image/png' })
+      .upload(`${B}/${sRepId}/photo.png`, PNG, { contentType: 'image/png' })
     log('Cross-school photo path denied', !!upCross.error, upCross.error?.message ?? 'no error?')
 
-    // Admin uploads to their own report so a real object exists for delete tests
+    // Admin uploads to their own submission so a real object exists for delete tests
     const upAdmin = await adminClient.storage.from(bucket)
       .upload(otherPath, PNG, { contentType: 'image/png' })
-    log('Admin uploads photo to own report', !upAdmin.error, upAdmin.error?.message ?? '')
+    log('Staff uploads a photo to their own submission', !upAdmin.error, upAdmin.error?.message ?? '')
 
     const ownSigned = await studentClient.storage.from(bucket).createSignedUrl(ownPath, 60)
-    log('Reporter can read own report photo', !!ownSigned.data?.signedUrl,
-      ownSigned.error?.message ?? '')
+    log('A student cannot read a photo (send only)', !ownSigned.data?.signedUrl,
+      ownSigned.error?.message ?? 'a link was issued')
 
-    const otherSigned = await studentClient.storage.from(bucket).createSignedUrl(otherPath, 60)
-    log('Cannot read another member\'s report photo', !!otherSigned.error,
-      otherSigned.error?.message ?? 'no error?')
-
-    const reviewerSigned = await adminClient.storage.from(bucket).createSignedUrl(ownPath, 60)
-    log('Reviewer can read school report photo', !!reviewerSigned.data?.signedUrl,
-      reviewerSigned.error?.message ?? '')
+    const staffSigned = await adminClient.storage.from(bucket).createSignedUrl(ownPath, 60)
+    log('Staff can read a school submission photo', !!staffSigned.data?.signedUrl,
+      staffSigned.error?.message ?? '')
 
     const attOk = await studentClient.from('report_attachments').insert({
-      report_id: sRep.data.id, school_id: A, storage_path: ownPath,
+      report_id: sRepId, school_id: A, storage_path: ownPath,
     })
-    log('Reporter can register own attachment', !attOk.error, attOk.error?.message ?? '')
+    log('Submitter can register own attachment', !attOk.error, attOk.error?.message ?? '')
 
     const attOther = await studentClient.from('report_attachments').insert({
-      report_id: aRep.data.id, school_id: A, storage_path: otherPath,
+      report_id: aRepId, school_id: A, storage_path: otherPath,
     })
-    log('Attachment for another member\'s report denied', !!attOther.error,
+    log('Attachment for another member\'s submission denied', !!attOther.error,
       attOther.error?.message ?? 'no error?')
 
     const attBadPath = await studentClient.from('report_attachments').insert({
-      report_id: sRep.data.id, school_id: A, storage_path: `${A}/${aRep.data.id}/photo.png`,
+      report_id: sRepId, school_id: A, storage_path: `${A}/${aRepId}/photo.png`,
     })
     log('Attachment path mismatch rejected', !!attBadPath.error && /does not match/i.test(attBadPath.error.message),
       attBadPath.error?.message ?? 'no error?')
 
-    await studentClient.storage.from(bucket).remove([otherPath])
-    const stillThere = await adminClient.storage.from(bucket).createSignedUrl(otherPath, 60)
-    log('Photo delete by another member denied (object intact)',
-      !!stillThere.data?.signedUrl,
-      stillThere.data?.signedUrl ? 'object still readable' : 'object removed!')
+    const staffDelete = await adminClient.storage.from(bucket).remove([ownPath])
+    const stillThere = await adminClient.storage.from(bucket).createSignedUrl(ownPath, 60)
+    log('Staff can delete a school photo (object gone)', !stillThere.data?.signedUrl,
+      staffDelete.error?.message ?? 'still readable!')
 
-    await studentClient.storage.from(bucket).remove([ownPath])
-    const gone = await studentClient.storage.from(bucket).createSignedUrl(ownPath, 60)
-    log('Reporter can delete own photo', !gone.data?.signedUrl, gone.error?.message ?? 'still readable!')
+    const studentDelete = await studentClient.storage.from(bucket).remove([ownPath])
+    const studentSee = await studentClient.storage.from(bucket).createSignedUrl(ownPath, 60)
+    log('A student cannot delete or read photos', !studentSee.data?.signedUrl,
+      studentDelete.error?.message ?? 'no error?')
   } else {
-    log('Report photo checks', false, 'report setup failed, skipping')
+    log('Report photo checks', false, 'submission setup failed, skipping')
   }
 
   // Cleanup: storage objects are removed through the storage API (reviewer rights),
-  // then any straggler rows via SQL; attachment/report rows via SQL.
-  // Cleanup order matters: remove photo objects via the Storage API (Supabase
-  // blocks direct SQL deletes on storage.objects) BEFORE removing the reports,
-  // then purge any orphaned objects left by earlier runs.
+  // then any straggler rows via SQL; attachment rows via SQL.
   if (ownPath && otherPath) {
     // Remove one at a time: a batch aborts if any path is already gone.
     await adminClient.storage.from(bucket).remove([ownPath])
@@ -889,7 +882,7 @@ async function main() {
       }
     } catch { /* best effort */ }
     try { await sql(`delete from public.report_attachments where storage_path like '11111111-1111-1111-1111-111111111111/%'`) } catch { /* best effort */ }
-    try { await sql(`delete from public.hazard_reports where description like 'RLS %'`) } catch { /* best effort */ }
+    try { await sql(`delete from public.submissions where message like 'RLS %'`) } catch { /* best effort */ }
   }
   if (token) {
     const leftObjs = await sql(`select count(*)::int as n from storage.objects where bucket_id = '${bucket}'`)
@@ -1378,7 +1371,7 @@ async function main() {
 
   const ALL_TABLES = [
     'profiles', 'audit_logs', 'schools', 'location_categories', 'locations',
-    'schedules', 'hazard_reports', 'report_attachments', 'incidents',
+    'schedules', 'submissions', 'report_attachments', 'incidents',
     'incident_notes', 'incident_status_history', 'check_ins',
     'weather_observations', 'alerts', 'incident_notifications',
   ]
@@ -1419,7 +1412,7 @@ async function main() {
   const studentMutations = [
     ['locations', studentClient.from('locations').update({ name: 'RLS renamed' }).eq('id', myLocation?.[0]?.id ?? '00000000-0000-0000-0000-000000000000')],
     ['schedules', studentClient.from('schedules').update({ label: 'RLS' }).eq('id', '00000000-0000-0000-0000-000000000000')],
-    ['hazard_reports', studentClient.from('hazard_reports').update({ status: 'resolved' }).eq('id', '00000000-0000-0000-0000-000000000000')],
+    ['submissions', studentClient.from('submissions').update({ status: 'resolved' }).eq('id', '00000000-0000-0000-0000-000000000000')],
     ['incidents', studentClient.from('incidents').update({ status: 'closed' }).eq('id', '00000000-0000-0000-0000-000000000000')],
     ['alerts', studentClient.from('alerts').update({ title: 'RLS' }).eq('id', '00000000-0000-0000-0000-000000000000')],
     ['audit_logs', studentClient.from('audit_logs').update({ action: 'RLS' }).eq('id', 0)],
@@ -1449,8 +1442,8 @@ async function main() {
     : true, `status=${noTokenRes.status}`)
 
   // Oversized and invalid input is rejected by the database
-  const tooLong = await studentClient.from('hazard_reports').insert({
-    school_id: A, category: 'other', description: 'x'.repeat(2001),
+  const tooLong = await studentClient.from('submissions').insert({
+    school_id: A, kind: 'observation', sub_type: 'report', message: 'x'.repeat(2001),
   })
   log('Oversized text is rejected by the database', !!tooLong.error,
     tooLong.error?.message ?? 'no error?')

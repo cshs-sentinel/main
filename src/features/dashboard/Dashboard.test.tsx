@@ -121,11 +121,10 @@ describe('Dashboard', () => {
       role: 'student',
       my_check_ins_today: 2,
       my_open_incidents: 1,
-      my_open_reports: 0,
     })
 
     expect(await screen.findByText('My status')).toBeInTheDocument()
-    expect(tileValues()).toEqual([2, 1, 0])
+    expect(tileValues()).toEqual([2, 1])
     expect(screen.queryByText('School summary')).not.toBeInTheDocument()
   })
 
@@ -157,7 +156,7 @@ describe('Dashboard', () => {
     })
 
     expect(await screen.findByText('School summary')).toBeInTheDocument()
-    expect(screen.getByText(/Counts only/)).toBeInTheDocument()
+    expect(screen.getByText(/Counts of what is open/)).toBeInTheDocument()
     expect(screen.getByText('open cases')).toBeInTheDocument()
   })
 

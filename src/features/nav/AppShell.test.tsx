@@ -82,7 +82,7 @@ describe('AppShell', () => {
     const menu = screen.getByRole('button', { name: /More/ })
     expect(menu).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByRole('link', { name: 'My schedule' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Report a hazard' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Send information' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Incident response' })).not.toBeInTheDocument()
   })
 

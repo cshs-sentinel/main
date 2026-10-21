@@ -9,13 +9,15 @@ import type { IncidentRow } from '../incidents/shared'
 interface DashboardCounts {
   role?: string
   my_open_incidents?: number
-  my_open_reports?: number
   my_check_ins_today?: number
   my_need_help?: number
   school_open_incidents?: number
   school_unacknowledged_incidents?: number
   school_oldest_unacknowledged_minutes?: number
-  school_open_reports?: number
+  submissions_open?: number
+  submissions_sentiment_open?: number
+  submissions_hazard_open?: number
+  submissions_observation_open?: number
   school_check_ins_today?: number
   school_need_help?: number
   users_total?: number
@@ -105,10 +107,6 @@ export default function Dashboard() {
             <span className="dash-value" data-testid="dash-tile-value">{counts.my_open_incidents ?? 0}</span>
             <span className="dash-label">open cases I raised</span>
           </li>
-          <li className="dash-tile">
-            <span className="dash-value" data-testid="dash-tile-value">{counts.my_open_reports ?? 0}</span>
-            <span className="dash-label">open reports I filed</span>
-          </li>
           {(counts.my_need_help ?? 0) > 0 && (
             <li className="dash-tile dash-tile-alert">
               <span className="dash-value" data-testid="dash-tile-value">{counts.my_need_help}</span>
@@ -118,14 +116,17 @@ export default function Dashboard() {
         </ul>
         <p className="loc-meta">
           <Link to="/sos">Raise an SOS</Link> · <Link to="/check-in">Record a check-in</Link> ·{' '}
-          <Link to="/reports">File a hazard report</Link>
+          <Link to="/submit">Send information</Link>
         </p>
       </section>
 
       {isStaff && (
         <section className="dash-section">
           <h2>School summary</h2>
-          <p className="loc-meta">Counts only — no names or locations of individuals.</p>
+          <p className="loc-meta">
+            Counts of what is open. The submissions themselves are read in
+            Submissions review.
+          </p>
           <ul className="dash-tiles">
             <li className="dash-tile">
               <span className="dash-value" data-testid="dash-tile-value">{counts.school_open_incidents ?? 0}</span>
@@ -136,8 +137,28 @@ export default function Dashboard() {
               <span className="dash-label">not yet acknowledged</span>
             </li>
             <li className="dash-tile">
-              <span className="dash-value" data-testid="dash-tile-value">{counts.school_open_reports ?? 0}</span>
-              <span className="dash-label">open hazard reports</span>
+              <span className="dash-value" data-testid="dash-tile-value">
+                {counts.submissions_open ?? 0}
+              </span>
+              <span className="dash-label">open submissions</span>
+            </li>
+            <li className="dash-tile">
+              <span className="dash-value" data-testid="dash-tile-value">
+                {counts.submissions_sentiment_open ?? 0}
+              </span>
+              <span className="dash-label">well-being (sentiment)</span>
+            </li>
+            <li className="dash-tile">
+              <span className="dash-value" data-testid="dash-tile-value">
+                {counts.submissions_hazard_open ?? 0}
+              </span>
+              <span className="dash-label">incidents & hazards</span>
+            </li>
+            <li className="dash-tile">
+              <span className="dash-value" data-testid="dash-tile-value">
+                {counts.submissions_observation_open ?? 0}
+              </span>
+              <span className="dash-label">observations</span>
             </li>
             <li className="dash-tile">
               <span className="dash-value" data-testid="dash-tile-value">{counts.school_check_ins_today ?? 0}</span>
@@ -162,7 +183,7 @@ export default function Dashboard() {
           <h2>Response</h2>
           <p className="loc-meta">
             <Link to="/incidents">Incident response queue</Link> ·{' '}
-            <Link to="/admin/reports">Hazard report review</Link>
+            <Link to="/admin/submissions">Submissions review</Link>
           </p>
         </section>
       )}

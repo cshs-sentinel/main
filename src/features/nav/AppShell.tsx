@@ -22,14 +22,21 @@ export default function AppShell() {
   const [moreOpen, setMoreOpen] = useState(false)
 
   const isReviewer = role === 'responder' || role === 'administrator'
+  const isStaff = isReviewer || role === 'teacher_staff'
   const isAdmin = role === 'administrator'
 
   const moreLinks: { to: string; label: string; note?: string }[] = [
     { to: '/schedule', label: 'My schedule' },
-    { to: '/reports', label: 'Report a hazard' },
+    { to: '/submit', label: 'Send information' },
+    ...(isStaff
+      ? ([{ to: '/admin/submissions', label: 'Submissions review' }] as {
+          to: string
+          label: string
+          note?: string
+        }[])
+      : []),
     ...(isReviewer
       ? ([
-          { to: '/admin/reports', label: 'Hazard report review' },
           { to: '/admin/alerts', label: 'Alert management' },
           { to: '/incidents', label: 'Incident response' },
         ] as { to: string; label: string; note?: string }[])

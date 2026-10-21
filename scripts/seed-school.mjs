@@ -192,20 +192,30 @@ if ((checkInCount ?? 0) === 0) {
 }
 
 const { count: reportCount } = await admin
-  .from('hazard_reports')
+  .from('submissions')
   .select('id', { count: 'exact', head: true })
 if ((reportCount ?? 0) === 0) {
-  await student.from('hazard_reports').insert({
+  await student.from('submissions').insert({
     school_id: schoolId,
-    category: 'facility_damage',
-    description: 'Sample report: the gym door handle is loose.',
+    kind: 'observation',
+    sub_type: 'safety_concern',
+    message: 'Sample submission: the gym door handle is loose.',
   })
-  await admin.from('hazard_reports').insert({
+  await admin.from('submissions').insert({
     school_id: schoolId,
-    category: 'crowding',
-    description: 'Sample report: the corridor outside the hall is congested at break.',
+    kind: 'incident_hazard',
+    sub_type: 'unsafe_condition',
+    message: 'Sample submission: the corridor outside the hall is congested at break.',
   })
-  console.log('created 2 sample hazard reports.')
+  await student.from('submissions').insert({
+    school_id: schoolId,
+    kind: 'sentiment',
+    sub_type: 'stressed',
+    emotion: 'stressed',
+    stress_level: 4,
+    message: 'Sample submission: exam week is piling up and I am finding it hard to sleep.',
+  })
+  console.log('created 3 sample submissions.')
 }
 
 const { count: incidentCount } = await admin

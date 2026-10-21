@@ -7,10 +7,10 @@ import RoleGuard from './features/auth/RoleGuard'
 import SignUp from './features/auth/SignUp'
 import AdminUsers from './features/admin/AdminUsers'
 import AdminSchedules from './features/admin/AdminSchedules'
-import AdminReports from './features/admin/AdminReports'
 import Locations from './features/admin/Locations'
 import Schedule from './features/schedule/Schedule'
-import Reports from './features/reports/Reports'
+import Submit from './features/submissions/Submit'
+import Submissions from './features/admin/Submissions'
 import CheckIn from './features/checkin/CheckIn'
 import Sos from './features/incidents/Sos'
 import AdminIncidents from './features/admin/AdminIncidents'
@@ -23,6 +23,7 @@ import AuditLog from './features/admin/AuditLog'
 function Home() {
   const { role } = useAuth()
   const isReviewer = role === 'responder' || role === 'administrator'
+  const isStaff = isReviewer || role === 'teacher_staff'
   const isAdmin = role === 'administrator'
 
   return (
@@ -52,11 +53,18 @@ function Home() {
             <Link to="/schedule">My schedule</Link> — expected locations, not verified presence.
           </li>
           <li>
-            <Link to="/reports">Report a hazard</Link> — file a facility or safety problem.
+            <Link to="/submit">Send information</Link> — feelings, incidents, hazards or
+            observations for the school.
           </li>
           <li>
             <Link to="/alerts">Alerts</Link> — official announcements for the school.
           </li>
+          {isStaff && (
+            <li>
+              <Link to="/admin/submissions">Submissions</Link> — review what people in
+              the school have sent.
+            </li>
+          )}
           {isReviewer && (
             <li>
               <Link to="/incidents">Incident response</Link> — acknowledge and work school cases.
@@ -92,14 +100,16 @@ export default function App() {
               <Route path="/" element={<Home />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/schedule" element={<Schedule />} />
-              <Route path="/reports" element={<Reports />} />
+              <Route path="/submit" element={<Submit />} />
               <Route path="/check-in" element={<CheckIn />} />
               <Route path="/sos" element={<Sos />} />
               <Route path="/alerts" element={<Alerts />} />
               <Route element={<RoleGuard allowed={['responder', 'administrator']} />}>
-                <Route path="/admin/reports" element={<AdminReports />} />
                 <Route path="/admin/alerts" element={<AdminAlerts />} />
                 <Route path="/incidents" element={<AdminIncidents />} />
+              </Route>
+              <Route element={<RoleGuard allowed={['teacher_staff', 'responder', 'administrator']} />}>
+                <Route path="/admin/submissions" element={<Submissions />} />
               </Route>
               <Route element={<RoleGuard allowed={['administrator']} />}>
                 <Route path="/admin/users" element={<AdminUsers />} />

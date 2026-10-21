@@ -13,7 +13,7 @@ import {
   statusLabel,
 } from './shared'
 import type { IncidentRow } from './shared'
-import type { LocationOption } from '../reports/shared'
+import type { LocationOption } from '../locations/shared'
 
 interface QueryResult {
   data: unknown

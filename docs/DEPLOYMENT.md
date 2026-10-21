@@ -18,8 +18,8 @@ the browser.
 |---|---|
 | Live URL (production, branch `main`) | **https://sentinel-app-1jo.pages.dev** |
 | Staging URL (branch `staging`) | **https://staging.sentinel-app-1jo.pages.dev** |
-| Deployment URL (phase 8 hardening) | https://8e666f9d.sentinel-app-1jo.pages.dev |
-| Previous deployment (alerts build) | https://8b816480.sentinel-app-1jo.pages.dev |
+| Deployment URL (realigned intake) | https://2f9c8579.sentinel-app-1jo.pages.dev |
+| Previous deployment (phase 8 hardening) | https://8e666f9d.sentinel-app-1jo.pages.dev |
 | Previous deployment (Phase 6) | https://08258527.sentinel-app-1jo.pages.dev |
 | Previous deployment (Phase 5) | https://606ad0ac.sentinel-app-1jo.pages.dev |
 | Weather worker | **https://sentinel-weather.sentinelcshs.workers.dev** (separate Worker project, holds the service-role secret) |

@@ -109,19 +109,30 @@ const { data: locations } = await withRetry(() =>
 )
 const location = locations?.[0]
 
+// No .select() after insert: a student may send but not read submissions, and
+// returning the row makes PostgREST apply the read policy.
 const report = await withRetry(() =>
-  student.from('hazard_reports').insert({
+  student.from('submissions').insert({
     school_id: schoolId,
-    category: 'safety_hazard',
-    description: `${STAMP} journey report: loose handrail on the north stair`,
+    kind: 'incident_hazard',
+    sub_type: 'unsafe_condition',
+    message: `${STAMP} journey report: loose handrail on the north stair`,
     location_id: location?.id ?? null,
-  }).select('id, status').single(),
+  }),
 )
-check('student files a hazard report', !report.error && !!report.data?.id, report.error?.message ?? '')
+check('student files a hazard report', !report.error, report.error?.message ?? '')
+
+// read the new row back as staff to get its id
+const { data: journeyRows } = await withRetry(() =>
+  admin.from('submissions').select('id, status').like('message', `${STAMP} journey report%`),
+)
+const reportId = journeyRows?.[0]?.id
+check('the submitted report is stored and visible to staff', Boolean(reportId),
+  `rows=${journeyRows?.length ?? 0}`)
 
 let photoPath = ''
-if (report.data?.id) {
-  photoPath = `${schoolId}/${report.data.id}/journey.png`
+if (reportId) {
+  photoPath = `${schoolId}/${reportId}/journey.png`
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64',
@@ -133,7 +144,7 @@ if (report.data?.id) {
 
   const attachment = await withRetry(() =>
     student.from('report_attachments').insert({
-      report_id: report.data.id,
+      report_id: reportId,
       school_id: schoolId,
       storage_path: photoPath,
     }),
@@ -143,7 +154,8 @@ if (report.data?.id) {
   const signed = await withRetry(() =>
     student.storage.from('report-photos').createSignedUrl(photoPath, 60),
   )
-  check('reporter can read their own photo', !!signed.data?.signedUrl, signed.error?.message ?? '')
+  check('a student cannot read the photo (send only)', !signed.data?.signedUrl,
+    signed.error?.message ?? 'a link was issued')
 
   // An anonymous visitor must not be able to obtain a link to the photo
   const anonClient = createClient(url, anonKey)
@@ -317,7 +329,7 @@ check(
   counts?.school_open_incidents === openIncidents.length,
   `dashboard=${counts?.school_open_incidents} open rows=${openIncidents.length} of ${visibleIncidents.data?.length ?? 0}`,
 )
-const visibleReports = await withRetry(() => admin.from('hazard_reports').select('id, status'))
+const visibleReports = await withRetry(() => admin.from('submissions').select('id, status'))
 const openReports = (visibleReports.data ?? []).filter((row) => row.status !== 'resolved')
 check(
   'administrator dashboard counts the open reports it can read',
@@ -329,7 +341,7 @@ check(
 console.log('\n6. Cleaning up journey records')
 await withRetry(() => admin.from('incident_notes').delete().eq('body', `${STAMP} responder note`))
 await withRetry(() => admin.from('check_ins').delete().eq('period', `${STAMP} Period 1`))
-await withRetry(() => admin.from('hazard_reports').delete().eq('description', `${STAMP} journey report: loose handrail on the north stair`))
+await withRetry(() => admin.from('submissions').delete().eq('message', `${STAMP} journey report: loose handrail on the north stair`))
 await withRetry(() => admin.from('alerts').delete().eq('title', `${STAMP} drill notice`))
 await withRetry(() => admin.from('incidents').delete().eq('description', `${STAMP} journey incident: smoke reported on the second floor`))
 await withRetry(() => admin.from('alerts').delete().eq('title', `${STAMP} drill notice`))

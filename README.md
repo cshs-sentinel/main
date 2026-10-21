@@ -36,10 +36,11 @@ is never committed.
 
 ## Current state
 
-Phases 1–2 complete (Gate 1 and Gate 2 approved). Phase 3 (hazard reports, private
-report photos, safety check-ins) is implemented and externally verified
-(migrations 0001–0012); the Gate 3 evidence pack is in `docs/GATE3_EVIDENCE.md`.
-See `docs/DEVELOPMENT_LOG.md` for the per-task record.
+Phases 1–3 complete (Gate 1, Gate 2 and Gate 3 approved). Phase 4 (SOS and
+incident response) is implemented and externally verified — server-allocated case
+references, role-checked status transitions, retained history, response notes and a
+documented manual fallback (migrations 0001–0013). Gate 4 evidence is in
+`docs/GATE4_EVIDENCE.md`. See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 
 ## Documentation
 
@@ -48,6 +49,8 @@ See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 - `docs/DEVELOPMENT_LOG.md` — per-task log
 - `docs/GATE2_EVIDENCE.md` — Gate 2 evidence pack
 - `docs/GATE3_EVIDENCE.md` — Gate 3 evidence pack
+- `docs/GATE4_EVIDENCE.md` — Gate 4 evidence pack
+- `docs/MANUAL_FALLBACK.md` — manual fallback and response responsibilities
 - `docs/FIRST_ADMIN.md` — first administrator provisioning
 - `AGENTS.md` — project rules for contributors
 - `SENTINEL_OPENCODE_VIBE_CODING_GUIDE.md` — phased roadmap and approval gates

@@ -553,3 +553,41 @@ body {
   font-size: 0.8125rem;
   color: var(--accent);
 }
+
+/* SOS and incident response */
+.btn-danger {
+  background: #b3261e;
+  border-color: #b3261e;
+  color: #ffffff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #8f1e18;
+  border-color: #8f1e18;
+}
+
+.inc-timeline {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.625rem;
+  border-left: 3px solid var(--border);
+  background: var(--bg);
+  border-radius: 0.25rem;
+}
+
+.inc-timeline h3 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0 0 0.25rem;
+  color: var(--text-muted);
+}
+
+.inc-timeline ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.inc-timeline li {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}

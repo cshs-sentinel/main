@@ -34,7 +34,7 @@ Repo: `cshs-sentinel/main` · Supabase project `vuqjfigoeuvjieznqyil` (dev).
 Gate 2 evidence: authorized users see only permitted school data; schedule data are
 never presented as verified occupancy (`/schedule` notice + `schedule-derived` tags).
 
-## Phase 3 — Check-ins and hazard reports (complete, Gate 3 pending review)
+## Phase 3 — Check-ins and hazard reports (complete, Gate 3 approved)
 
 | Task | Commit | Files | Tests | Status |
 |---|---|---|---|---|
@@ -43,7 +43,24 @@ never presented as verified occupancy (`/schedule` notice + `schedule-derived` t
 | 3.3 | *pending* | `src/features/reports/Reports.tsx` + `shared.ts` + tests, `/reports` route, CSS | 6 unit tests | done |
 | 3.4 | *pending* | `src/features/admin/AdminReports.tsx` + tests, `/admin/reports` route (responder/admin) | 5 unit tests | done |
 | 3.6 | *pending* | Migration 0012 `check_ins`, `src/features/checkin/CheckIn.tsx` + tests, `/check-in` route, verify-rls §13 | 6 unit tests | done |
-| 3.5 | *pending* | `docs/GATE3_EVIDENCE.md`, ARCHITECTURE/ROLLBACK/DEVELOPMENT_LOG/README updates | verify-rls 135/135, 65 unit tests | done — **awaiting Gate 3 review** |
+| 3.5 | *pending* | `docs/GATE3_EVIDENCE.md`, ARCHITECTURE/ROLLBACK/DEVELOPMENT_LOG/README updates | verify-rls 135/135, 65 unit tests | done — **Gate 3 approved** |
+
+## Phase 4 — SOS and incident response (complete, Gate 4 pending review)
+
+| Task | Commit | Files | Tests | Status |
+|---|---|---|---|---|
+| 4.1 | *pending* | Migration 0013 (`incidents`, `incident_status_history`, `incident_notes`, `next_case_ref()`, `transition_incident()`), verify-rls §14 | verify-rls 162/162 | done |
+| 4.2 | *pending* | `src/features/incidents/Sos.tsx` + `shared.ts` + tests, `/sos` route | 7 unit tests | done |
+| 4.3 | *pending* | `src/features/admin/AdminIncidents.tsx` + tests, `/incidents` route (responder/admin) | 6 unit tests | done |
+| 4.4 | *pending* | `docs/MANUAL_FALLBACK.md` (fallback procedure + response responsibilities) | — | done |
+| 4.5 | *pending* | `docs/GATE4_EVIDENCE.md`, ARCHITECTURE/ROLLBACK/DEVELOPMENT_LOG updates | verify-rls 162/162, 78 unit tests | done — **awaiting Gate 4 review** |
+
+Incident model (migration 0013): server-allocated `SNT-YYYY-####` case references;
+status changes only through the role-checked `transition_incident()` function,
+which writes the status history and an `incident_transition` audit row; clients
+have no update or delete rights on incidents, history or notes; a 5-minute
+duplicate guard per person; cancellation by the creator or an administrator with
+the history preserved.
 
 Implemented report model (migrations 0007–0008): any authenticated member files a
 report for their own school as themselves; a report is readable by its reporter and

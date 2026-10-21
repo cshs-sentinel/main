@@ -927,6 +927,181 @@ async function main() {
     log('Cleanup removed all test check-ins', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
   }
 
+  // 14. SOS / incidents (case reference, workflow, roles, duplicates, history)
+  console.log('\n14. Incidents');
+  const { data: anonInc } = await admin.from('incidents').select('*')
+  log('Anon blocked from incidents', (anonInc?.length ?? 0) === 0, `rows=${anonInc?.length ?? 0}`)
+
+  const { data: counterRead, error: counterErr } = await studentClient.from('incident_case_refs').select('*')
+  log('Case-reference counter not readable by clients',
+    !!counterErr || (counterRead?.length ?? 0) === 0,
+    counterErr?.message ?? `rows=${counterRead?.length ?? 0}`)
+
+  const sInc = await studentClient.from('incidents').insert({
+    school_id: A, category: 'emergency', description: 'RLS incident raised by student',
+  }).select('id, case_ref, status').single()
+  log('Student raises an incident', !sInc.error && !!sInc.data?.id, sInc.error?.message ?? '')
+  log('Case reference format SNT-YYYY-####',
+    /^SNT-\d{4}-\d{4}$/.test(sInc.data?.case_ref ?? ''),
+    `case_ref=${sInc.data?.case_ref ?? 'missing'}`)
+
+  const dupInc = await studentClient.from('incidents').insert({
+    school_id: A, category: 'emergency', description: 'RLS duplicate incident attempt',
+  })
+  log('Duplicate incident within cooldown rejected',
+    !!dupInc.error && /already have an open incident/i.test(dupInc.error.message),
+    dupInc.error?.message ?? 'no error?')
+
+  const badCatInc = await adminClient.from('incidents').insert({
+    school_id: A, category: 'not-a-category', description: 'RLS bad category incident',
+  })
+  log('Invalid incident category rejected',
+    !!badCatInc.error && /invalid incident category/i.test(badCatInc.error.message),
+    badCatInc.error?.message ?? 'no error?')
+
+  // Cross-school insert is tested by the admin, who has no open case at this
+  // point: the duplicate guard (a BEFORE trigger) would otherwise fire first.
+  const xSchoolInc = await adminClient.from('incidents').insert({
+    school_id: B, category: 'emergency', description: 'RLS cross school incident',
+  })
+  log('Cross-school incident insert denied',
+    !!xSchoolInc.error && /row-level security/i.test(xSchoolInc.error.message ?? ''),
+    xSchoolInc.error?.message ?? 'no error?')
+
+  const aInc = await adminClient.from('incidents').insert({
+    school_id: A, category: 'medical', description: 'RLS incident raised by admin',
+  }).select('id, case_ref, status').single()
+  log('Admin raises an incident', !aInc.error && !!aInc.data?.id, aInc.error?.message ?? '')
+  log('Case references are unique', sInc.data?.case_ref !== aInc.data?.case_ref,
+    `${sInc.data?.case_ref} vs ${aInc.data?.case_ref}`)
+
+  if (aInc.data?.id) {
+    const sReadInc = await studentClient.from('incidents').select('id').eq('id', aInc.data.id)
+    log("Student cannot read another member's incident", (sReadInc.data ?? []).length === 0,
+      `rows=${sReadInc.data?.length}`)
+
+    const sTransition = await studentClient.rpc('transition_incident', {
+      incident_id: aInc.data.id, new_status: 'acknowledged', note: null,
+    })
+    log('Non-reviewer transition rejected',
+      !!sTransition.error && /not allowed for your role/i.test(sTransition.error.message),
+      sTransition.error?.message ?? 'no error?')
+
+    const sNote = await studentClient.from('incident_notes').insert({
+      incident_id: aInc.data.id, body: 'RLS note from another member',
+    })
+    log("Cannot add a note to another member's incident", !!sNote.error,
+      sNote.error?.message ?? 'no error?')
+
+    const sCancel = await studentClient.rpc('transition_incident', {
+      incident_id: aInc.data.id, new_status: 'cancelled', note: 'RLS not mine',
+    })
+    log("Cannot cancel another member's incident", !!sCancel.error,
+      sCancel.error?.message ?? 'no error?')
+
+    // Full responder lifecycle on the admin incident
+    const steps = [
+      ['acknowledged', null],
+      ['assigned', null],
+      ['in_progress', null],
+      ['resolved', 'RLS resolved with note'],
+      ['closed', null],
+    ]
+    let lifecycleOk = true
+    let lastError = ''
+    for (const [status, note] of steps) {
+      const { error: stepError } = await adminClient.rpc('transition_incident', {
+        incident_id: aInc.data.id, new_status: status, note,
+      })
+      if (stepError) {
+        lifecycleOk = false
+        lastError = `${status}: ${stepError.message}`
+        break
+      }
+    }
+    log('Responder completes the full workflow', lifecycleOk, lastError)
+
+    const { data: closedInc } = await adminClient.from('incidents')
+      .select('status, resolution_notes').eq('id', aInc.data.id).single()
+    log('Incident reaches closed with resolution notes',
+      closedInc?.status === 'closed' && closedInc?.resolution_notes === 'RLS resolved with note',
+      `status=${closedInc?.status}`)
+
+    const badStep = await adminClient.rpc('transition_incident', {
+      incident_id: aInc.data.id, new_status: 'in_progress', note: null,
+    })
+    log('Transition out of a closed case rejected',
+      !!badStep.error && /not allowed for your role/i.test(badStep.error.message),
+      badStep.error?.message ?? 'no error?')
+
+    const { data: history } = await adminClient.from('incident_status_history')
+      .select('from_status, to_status, actor_id').eq('incident_id', aInc.data.id)
+    log('Status history retained for every transition', (history?.length ?? 0) === steps.length,
+      `rows=${history?.length ?? 0}`)
+
+    const sHistory = await studentClient.from('incident_status_history')
+      .select('id').eq('incident_id', aInc.data.id)
+    log("Student cannot read another member's incident history", (sHistory.data ?? []).length === 0,
+      `rows=${sHistory.data?.length}`)
+
+    const directUpdate = await adminClient.from('incidents')
+      .update({ status: 'new' }).eq('id', aInc.data.id).select('id')
+    log('Direct status update blocked — RPC only', (directUpdate.data ?? []).length === 0,
+      `rows=${directUpdate.data?.length}`)
+
+    const del = await adminClient.from('incidents').delete().eq('id', aInc.data.id).select('id')
+    log('Incident delete blocked (0 rows)', (del.data ?? []).length === 0, `rows=${del.data?.length}`)
+
+    const note = await adminClient.from('incident_notes').insert({
+      incident_id: aInc.data.id, body: 'RLS responder note',
+    })
+    log('Responder can add a note', !note.error, note.error?.message ?? '')
+
+    const { data: incAudit } = await adminClient.from('audit_logs')
+      .select('action, entity_type').eq('entity_type', 'incidents')
+    const incActions = new Set((incAudit?.map((r) => r.action) ?? []))
+    log('Incident transitions audited', incActions.has('incident_transition'),
+      `actions=${[...incActions].join(',')}`)
+  }
+
+  if (sInc.data?.id) {
+    const cancel = await studentClient.rpc('transition_incident', {
+      incident_id: sInc.data.id, new_status: 'cancelled', note: 'RLS false alarm',
+    })
+    log('Creator can cancel their own case', !cancel.error, cancel.error?.message ?? '')
+
+    const { data: cancelled } = await studentClient.from('incidents')
+      .select('status, cancelled_reason').eq('id', sInc.data.id).single()
+    log('Cancellation keeps the reason and the history',
+      cancelled?.status === 'cancelled' && cancelled?.cancelled_reason === 'RLS false alarm',
+      `status=${cancelled?.status}`)
+
+    const { data: ownHistory } = await studentClient.from('incident_status_history')
+      .select('id').eq('incident_id', sInc.data.id)
+    log('Creator can read their own case history', (ownHistory?.length ?? 0) >= 1,
+      `rows=${ownHistory?.length ?? 0}`)
+
+    const ownNote = await studentClient.from('incident_notes').insert({
+      incident_id: sInc.data.id, body: 'RLS context note from creator',
+    })
+    log('Creator can add a context note to their own case', !ownNote.error,
+      ownNote.error?.message ?? '')
+  }
+
+  if (token) {
+    try {
+      await sql(`delete from public.audit_logs where entity_type in ('incidents', 'incident_notes')
+        and entity_id in (select id::text from public.incidents where description like 'RLS %')`)
+      await sql(`delete from public.incident_notes where incident_id in (select id from public.incidents where description like 'RLS %')`)
+      await sql(`delete from public.incident_status_history where incident_id in (select id from public.incidents where description like 'RLS %')`)
+      await sql(`delete from public.incidents where description like 'RLS %'`)
+    } catch { /* best effort */ }
+    const leftInc = await sql(`select count(*)::int as n from public.incidents where description like 'RLS %'`)
+    log('Cleanup removed all test incidents', (leftInc[0]?.n ?? 0) === 0, `remaining=${leftInc[0]?.n}`)
+  } else {
+    log('Cleanup removed all test incidents', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
+  }
+
   finish()
 }
 

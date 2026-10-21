@@ -179,6 +179,29 @@ drop policy if exists report_photos_insert_own on storage.objects;
 -- delete from storage.buckets where id = 'report-photos';
 ```
 
+For `20261021000013_incidents.sql` (Phase 4 SOS / incidents):
+
+```sql
+-- Rollback incidents migration (run only if explicitly approved)
+-- WARNING: loses all incident cases, their history and their notes.
+drop trigger if exists incidents_audit on public.incidents;
+drop trigger if exists incident_notes_audit on public.incident_notes;
+drop trigger if exists incidents_set_updated_at on public.incidents;
+drop trigger if exists incidents_validate on public.incidents;
+drop function if exists public.validate_incident();
+drop function if exists public.next_case_ref();
+drop function if exists public.transition_incident(uuid, text, text);
+drop policy if exists incident_notes_select_readable on public.incident_notes;
+drop policy if exists incident_notes_insert_author on public.incident_notes;
+drop policy if exists incident_history_select_readable on public.incident_status_history;
+drop policy if exists incidents_select_creator_or_reviewer on public.incidents;
+drop policy if exists incidents_insert_own on public.incidents;
+drop table if exists public.incident_notes;
+drop table if exists public.incident_status_history;
+drop table if exists public.incidents;
+drop table if exists public.incident_case_refs;
+```
+
 ### Option B: Point-in-time Restore
 
 If the project plan supports PITR:

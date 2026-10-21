@@ -94,6 +94,7 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 | Hazard reports: file as self, reporter + reviewer read, reviewer status transitions, no client delete | Implemented (0007, read scope narrowed in 0008) |
 | Report photos in a private bucket with signed-URL access | Implemented (0009–0011) |
 | Check-ins with explicit location source | Implemented (0012) |
+| SOS / incident workflow: case reference, role-checked transitions, history, notes, duplicate guard | Implemented (0013) |
 | SOS / incidents, alerts, weather, dashboard | Planned (later phases) |
 
 ---
@@ -113,8 +114,8 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 | `/schedule` | Own schedule | Auth | All | Implemented |
 | `/reports` | Hazard report form + own reports | Auth | All | Implemented |
 | `/admin/reports` | Report review queue | Auth | responder, admin | Implemented |
-| `/sos` | SOS trigger + case ref | Auth | All | Planned (Phase 4) |
-| `/incidents` | Incident list (role-filtered) | Auth + role | responder, admin | Planned (Phase 4) |
+| `/sos` | SOS trigger + case ref | Auth | All | Implemented |
+| `/incidents` | Incident list (role-filtered) | Auth + role | responder, admin | Implemented |
 | `/incidents/:ref` | Incident detail + timeline | Auth + role | responder, admin | Planned (Phase 4) |
 | `/dashboard` | Role-specific dashboard | Auth + role | All (variant) | Planned (Phase 5) |
 | `/admin/users` | User management | Auth | administrator | Implemented |
@@ -204,7 +205,6 @@ incidents *──1 profiles (acknowledged_by, assigned_to nullable)
 incidents *──1 locations (optional, where recorded)
 incident_status_history *──1 incidents
 incident_notes *──1 incidents *──1 profiles
-
 alerts *──1 profiles (drafted_by, approved_by)
 alert_targets *──1 alerts (role or building)
 
@@ -215,8 +215,8 @@ audit_logs (append-only; actor, action, entity, before/after JSONB)
 
 **Implemented vs planned:** `profiles`, `audit_logs`, `schools`,
 `location_categories`, `locations`, `schedules`, `hazard_reports`,
-`report_attachments`, and `check_ins` exist (migrations 0001–0012).
-`incidents`, `incident_status_history`, `incident_notes`, `alerts`, `alert_targets`,
+`report_attachments`, `check_ins`, `incidents`, `incident_status_history`, and
+`incident_notes` exist (migrations 0001–0013). `alerts`, `alert_targets`,
 and `weather_observations` are design targets from the original specification and
 are not built yet.
 
@@ -237,9 +237,9 @@ school-scoped and archive-only (no client deletes).
 | `check_ins` | id, school_id, profile_id, location_id (optional), location_source, period, status, checked_in_at | Implemented: own write; own + responder/admin read; **immutable (no update/delete)** |
 | `hazard_reports` | id, school_id, reporter_id, location_id (optional), category, description, status | Implemented: own-school scope + **reporter or reviewer reads**; any role files own-school as self; responder/admin update status; **no client delete (retained)** |
 | `report_attachments` | id, report_id, school_id, storage_path, uploaded_by | Implemented: reporter uploads; reads mirror the report read scope; no client update |
-| `incidents` | id, case_ref UNIQUE, status, created_by, assigned_to | Creator + responder/admin |
-| `incident_status_history` | id, incident_id, from_status, to_status, actor_id | Same as incident |
-| `incident_notes` | id, incident_id, author_id, body | Same |
+| `incidents` | id, case_ref UNIQUE, school_id, created_by, status, category, description, location_id, acknowledged_by/at, assigned_to/at, resolved_at, resolution_notes, closed_at, cancelled_at, cancelled_reason | Implemented: creator + responder/admin read; creator files own-school; **status changes only via `transition_incident()`**; **no client update/delete** |
+| `incident_status_history` | id, incident_id, from_status, to_status, actor_id, note | Implemented: append-only; readable with the incident |
+| `incident_notes` | id, incident_id, author_id, body | Implemented: creator + responders add; no update/delete |
 | `alerts` | id, status (draft/approved/published/cancelled), content, target_role, target_building_id | Draft: author+admin; Published: all authenticated |
 | `weather_observations` | id, source, observed_at, temp_c, humidity_pct, fetched_at, is_stale | Authenticated read; server write |
 | `audit_logs` | id, actor_id, action, entity_type, entity_id, payload JSONB, created_at | Admin (own-school actors); insert via trigger/RPC only |
@@ -302,6 +302,21 @@ and the server rejects paths that do not match `{school_id}/{report_id}/…`.
 Supabase blocks direct SQL deletes on `storage.objects`, so orphaned objects are
 purged through the Storage API by a reviewer.
 
+**Incident server-side rules** (migration 0013): the case reference is allocated
+server-side (`SNT-YYYY-####`, per-year counter, zero-padded) and is unique; an
+incident may only be raised by the authenticated user, with an allowed category,
+a 3–2000 character description, and an optional location that must exist, be in
+the same school, and not be archived. **Duplicate protection:** a person with an
+open case (`new`/`acknowledged`/`assigned`/`in_progress`) cannot raise another
+within 5 minutes; the rejection quotes their existing case reference. **All status
+changes go through `transition_incident(incident_id, new_status, note)`**, a
+security-definer function that checks the role (responder/administrator for
+acknowledge → close; the creator or an administrator for cancel), writes the
+status-history row, and writes an `incident_transition` audit row. Clients have
+**no update or delete rights** on incidents, history, or notes, so the workflow
+cannot be bypassed or erased. The manual fallback when the system is unavailable
+is documented in `docs/MANUAL_FALLBACK.md`.
+
 ### 4.3 Enums / status values (check constraints)
 
 - `app_role`: student, teacher_staff, responder, administrator, (system_operator)
@@ -311,7 +326,7 @@ purged through the Storage API by a reviewer.
 - `location_categories.environment`: indoor, outdoor, either
 - `schedules.status`: active, inactive
 - `schedules.day_of_week`: 0–6 (0 = Sunday, JS `Date.getDay()` convention)
-- `incident_status` *(planned)*: new, acknowledged, assigned, in_progress, resolved, closed, cancelled
+- `incident_status` (implemented, migration 0013): new, acknowledged, assigned, in_progress, resolved, closed, cancelled
 - `report_status` (implemented, migration 0007): open, acknowledged, resolved
 - `location_source` (implemented, migration 0012): self_selected, schedule_derived, staff_verified
 - `check_ins.status` (implemented, migration 0012): safe, need_help
@@ -450,7 +465,7 @@ Where T = dry-bulb temperature (°F), RH = relative humidity (%).
 | Action | Logged |
 |---|---|
 | Role changes | ✓ |
-| Incident status transitions | ✓ (via status_history; also audit_logs) |
+| Incident status transitions | ✓ (status history + `incident_transition` audit rows) |
 | Alert approve/publish/correct/cancel | ✓ |
 | Admin CRUD on school structure | ✓ |
 | Hazard report creation and status changes | ✓ (trigger `hazard_reports_audit`) |

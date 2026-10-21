@@ -8,35 +8,39 @@ import type { AppRole } from './AuthContext'
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [role, setRole] = useState<AppRole | null>(null)
+  const [schoolId, setSchoolId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
 
-    async function loadRole(userId: string) {
+    async function loadProfile(userId: string) {
       const { data, error } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, school_id')
         .eq('id', userId)
         .single()
       if (cancelled) return
       if (error) {
         setRole(null)
+        setSchoolId(null)
         if (error.code === 'PGRST301' || error.message.includes('JWT')) {
           await supabase.auth.signOut()
         }
         return
       }
       setRole((data?.role as AppRole) ?? null)
+      setSchoolId((data?.school_id as string) ?? null)
     }
 
     supabase.auth.getSession().then(({ data }) => {
       if (cancelled) return
       setSession(data.session)
       if (data.session?.user) {
-        void loadRole(data.session.user.id)
+        void loadProfile(data.session.user.id)
       } else {
         setRole(null)
+        setSchoolId(null)
       }
       setLoading(false)
     })
@@ -45,9 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cancelled) return
       setSession(newSession)
       if (newSession?.user) {
-        void loadRole(newSession.user.id)
+        void loadProfile(newSession.user.id)
       } else {
         setRole(null)
+        setSchoolId(null)
       }
       setLoading(false)
     })
@@ -60,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user: session?.user ?? null, session, role, loading }}
+      value={{ user: session?.user ?? null, session, role, schoolId, loading }}
     >
       {children}
     </AuthContext.Provider>

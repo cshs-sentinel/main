@@ -7,6 +7,7 @@ export interface AuthContextValue {
   user: User | null
   session: Session | null
   role: AppRole | null
+  schoolId: string | null
   loading: boolean
 }
 
@@ -14,6 +15,7 @@ export const AuthContext = createContext<AuthContextValue>({
   user: null,
   session: null,
   role: null,
+  schoolId: null,
   loading: true,
 })
 

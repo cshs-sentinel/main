@@ -201,3 +201,230 @@ body {
   white-space: nowrap;
   border-width: 0;
 }
+
+.btn {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.375rem 0.75rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+.admin-section-title {
+  font-size: 1.0625rem;
+  margin: 1.5rem 0 0.625rem;
+}
+
+.loc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.loc-toolbar select,
+.loc-toolbar input {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+.loc-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+}
+
+.loc-form h2 {
+  font-size: 1rem;
+  margin: 0 0 0.375rem;
+}
+
+.loc-form label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin-top: 0.375rem;
+}
+
+.loc-form input,
+.loc-form select,
+.loc-form textarea {
+  font: inherit;
+  font-size: 0.9375rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+.loc-form textarea {
+  resize: vertical;
+}
+
+.loc-form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.loc-list,
+.cat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.loc-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-top: 0.625rem;
+  padding-right: 0.75rem;
+  padding-bottom: 0.625rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+}
+
+.loc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.loc-name {
+  font-weight: 500;
+  font-size: 0.9375rem;
+}
+
+.loc-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.loc-actions {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.loc-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--error-text);
+  background: var(--error-bg);
+  border-radius: 0.375rem;
+}
+
+.loc-confirm p {
+  margin: 0;
+}
+
+.loc-empty {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  padding: 0.75rem 0;
+  margin: 0;
+}
+
+.cat-section .loc-empty {
+  padding-top: 0;
+}
+
+.cat-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+}
+
+.cat-name {
+  flex: 1;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.cat-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.cat-form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  margin-top: 0.75rem;
+}
+
+.cat-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cat-field label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.cat-form input,
+.cat-form select {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+.cat-form .auth-error {
+  flex-basis: 100%;
+  margin: 0;
+}

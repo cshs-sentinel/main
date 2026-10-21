@@ -13,6 +13,7 @@ function renderWithRole(role: AppRole | null, loading = false) {
     user: role ? mockUser : null,
     session: null,
     role,
+    schoolId: '11111111-1111-1111-1111-111111111111',
     loading,
   }
 

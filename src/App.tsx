@@ -6,6 +6,7 @@ import ProtectedRoute from './features/auth/ProtectedRoute'
 import RoleGuard from './features/auth/RoleGuard'
 import SignUp from './features/auth/SignUp'
 import AdminUsers from './features/admin/AdminUsers'
+import Locations from './features/admin/Locations'
 import { supabase } from './lib/supabase'
 
 function Home() {
@@ -17,9 +18,14 @@ function Home() {
       <p>Smart Emergency Network for Tracking Incidents, Notifications, Evaluation, and Logistics.</p>
       <p>You are signed in{role ? ` as ${role}` : ''}.</p>
       {role === 'administrator' && (
-        <p>
-          <Link to="/admin/users">User management</Link>
-        </p>
+        <>
+          <p>
+            <Link to="/admin/users">User management</Link>
+          </p>
+          <p>
+            <Link to="/admin/structure">School locations</Link>
+          </p>
+        </>
       )}
       <button type="button" onClick={() => void supabase.auth.signOut()}>
         Sign out
@@ -39,6 +45,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route element={<RoleGuard allowed={['administrator']} />}>
               <Route path="/admin/users" element={<AdminUsers />} />
+              <Route path="/admin/structure" element={<Locations />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

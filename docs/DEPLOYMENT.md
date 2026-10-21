@@ -17,7 +17,8 @@ the browser.
 | Item | Value |
 |---|---|
 | Live URL (stable) | **https://sentinel-app-1jo.pages.dev** |
-| Deployment URL (Phase 6 build) | https://08258527.sentinel-app-1jo.pages.dev |
+| Deployment URL (UI shell build) | https://e7c99394.sentinel-app-1jo.pages.dev |
+| Previous deployment (Phase 6) | https://08258527.sentinel-app-1jo.pages.dev |
 | Previous deployment (Phase 5) | https://606ad0ac.sentinel-app-1jo.pages.dev |
 | Weather worker | **https://sentinel-weather.sentinelcshs.workers.dev** (separate Worker project, holds the service-role secret) |
 | Cloudflare account | `62991ae0c53627eb96f1207463435b3f` — "Sentinelcshs@gmail.com's Account" |

@@ -96,7 +96,7 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 | Check-ins with explicit location source | Implemented (0012) |
 | SOS / incident workflow: case reference, role-checked transitions, history, notes, duplicate guard | Implemented (0013) |
 | Role-filtered dashboard (counts only; students see own data only) | Implemented (0014) |
-| SOS / incidents, alerts, weather | Planned (later phases) |
+| SOS / incidents | Planned (later phases) |
 
 ---
 
@@ -122,8 +122,8 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 | `/admin/users` | User management | Auth | administrator | Implemented |
 | `/admin/structure` | Locations CRUD | Auth | administrator | Implemented |
 | `/admin/schedules` | Schedule management | Auth | administrator | Implemented |
-| `/alerts` | Alert feed | Auth | All | Planned (Phase 7) |
-| `/admin/alerts/new` | Alert composer | Auth | responder (approver), admin | Planned (Phase 7) |
+| `/alerts` | Alert feed (official announcements + new-case notices) | Auth | All | Implemented |
+| `/admin/alerts` | Alert console (draft, approve, publish, correct, cancel) | Auth + role | responder, admin | Implemented |
 
 > Route shapes for reports follow the approved Phase 3 plan: `/reports` combines the
 > submission form with the reporter's own list, and `/admin/reports` is the
@@ -252,7 +252,8 @@ school-scoped and archive-only (no client deletes).
 | `incidents` | id, case_ref UNIQUE, school_id, created_by, status, category, description, location_id, acknowledged_by/at, assigned_to/at, resolved_at, resolution_notes, closed_at, cancelled_at, cancelled_reason | Implemented: creator + responder/admin read; creator files own-school; **status changes only via `transition_incident()`**; **no client update/delete** |
 | `incident_status_history` | id, incident_id, from_status, to_status, actor_id, note | Implemented: append-only; readable with the incident |
 | `incident_notes` | id, incident_id, author_id, body | Implemented: creator + responders add; no update/delete |
-| `alerts` | id, status (draft/approved/published/cancelled), content, target_role, target_building_id | Draft: author+admin; Published: all authenticated |
+| `alerts` | id, school_id, title, body, severity, status, target_scope, target_role, created_by, approved_at, published_at, cancelled_at, cancel_reason, supersedes_id, version | Implemented: own-school scope; audience-scoped read (published); responders/admins draft; **status changes only via the workflow functions**; no client delete |
+| `incident_notifications` | id, school_id, incident_id, case_ref, title, body | Implemented: **reviewer-only** operational notices; written by trigger; no client write |
 | `weather_observations` | id, school_id, source, observed_at, fetched_at, latitude, longitude, temperature_c, humidity_percent, heat_index_c, heat_index_method, heat_index_applicable, rule_version, is_stale | Implemented: **server writes only** (worker service role); authenticated own-school read; no client write |
 | `audit_logs` | id, actor_id, action, entity_type, entity_id, payload JSONB, created_at | Admin (own-school actors); insert via trigger/RPC only |
 
@@ -342,7 +343,7 @@ is documented in `docs/MANUAL_FALLBACK.md`.
 - `report_status` (implemented, migration 0007): open, acknowledged, resolved
 - `location_source` (implemented, migration 0012): self_selected, schedule_derived, staff_verified
 - `check_ins.status` (implemented, migration 0012): safe, need_help
-- `alert_status` *(planned)*: draft, approved, published, corrected, cancelled
+- `alert_status` (implemented, migration 0016): draft, approved, published, corrected, cancelled
 - `report_category` (implemented, migration 0007): facility_damage, safety_hazard, crowding, other
 
 **Multi-school isolation (Phase 2):** every scoping table carries `school_id`;
@@ -426,6 +427,19 @@ responder/administrator reviewers, and are never deleted by clients.
 
 - No external delivery in MVP. UI must never claim "SMS sent" or "email delivered."
 - Post-MVP (E1): evaluate cost/privacy of email/SMS/push before any integration.
+
+**Implemented (Phase 7, migrations 0016–0017):** `alerts` with the workflow
+`draft → approved → published`, plus `corrected` (superseded by a new version) and
+`cancelled` (retained with a reason). Only administrators may approve, publish,
+correct or cancel, and the changes happen exclusively through the server functions
+`approve_alert`, `publish_alert`, `correct_alert` and `cancel_alert` — a client can
+never set a status itself, and there is no client delete. A new incident creates
+an **operational** notification in `incident_notifications`, visible to responders
+and administrators only, so an automatic row can never be mistaken for an approved
+announcement. Targeting in v1: everyone, one role, or responders. The original
+`alert_targets` table and per-building targeting are deferred until a building-scope
+model exists. Nothing is ever described as "delivered": the app only says
+"published in the app", and states that no SMS, email or push was sent.
 
 ### 6.2 Response Notification to SOS
 

@@ -107,6 +107,29 @@ single `<main>` landmark per page. Remaining Phase 8 work (contrast audit,
 screen-reader walkthrough, e2e/browser tests, backup/restore rehearsal, retention
 jobs, audit-log screen) is still open.
 
+## Phase 7 — In-app alerts (complete, Gate 7 pending review)
+
+| Task | Commit | Files | Tests | Status |
+|---|---|---|---|---|
+| 7.1 | *pending* | Migrations 0016 (`alerts`, `incident_notifications`, workflow functions, RLS) & 0017 (workflow flag fix), verify-rls §17 | 22 alert checks | done |
+| 7.2 | *pending* | `src/features/alerts/Alerts.tsx` + `shared.ts` + tests, `src/features/admin/AdminAlerts.tsx` + tests, `/alerts` + `/admin/alerts` routes, 5-item bottom nav | 16 UI tests | done |
+| 7.3 | *pending* | `docs/GATE7_EVIDENCE.md`, ARCHITECTURE/ROLLBACK updates, harness self-heal for test state | verify-rls 197/197, 164 unit tests | done — **awaiting Gate 7 review** |
+
+Alert model (Phase 7): `draft → approved → published` with `corrected` (new version,
+old row retained) and `cancelled` (retained with a reason). Only administrators may
+approve, publish, correct or cancel, and only through the server functions — a
+client can never set a status itself and there is no client delete. A new incident
+creates an operational `incident_notifications` row visible to responders and
+administrators only, so an automatic notice can never be mistaken for an approved
+announcement. **No external channel is integrated**: the UI only ever says
+"published in the app" and states that no SMS, email or push was sent.
+
+### Harness robustness (2026-10-21)
+The verification script now resets the test accounts and the school's categories at
+the start of a run. An interrupted or manual test had left the admin account as a
+plain student and four seeded categories inactive, which cascaded into 31
+unrelated failures.
+
 Staleness correction (Task 6.5): the worker and the UI computed staleness from the
 *fetch* timestamp, which is always current, so `freshness.stale` and the stored
 `is_stale` column could never become true and the live "STALE" marker could never

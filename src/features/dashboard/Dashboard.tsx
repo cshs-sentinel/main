@@ -226,10 +226,13 @@ export default function Dashboard() {
       <section className="dash-section">
         <h2>Not available yet</h2>
         <ul className="dash-roles">
-          <li>Published alerts — the alert workflow is not built yet (later phase).</li>
           {!isReviewer && (
             <li>Weather advisory — shown to responders and administrators only.</li>
           )}
+          <li>
+            <Link to="/alerts">Alerts</Link> — official announcements are published in the
+            app; no SMS, email or push message is sent.
+          </li>
         </ul>
       </section>
     </main>

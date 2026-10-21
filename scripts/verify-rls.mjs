@@ -44,8 +44,38 @@ async function signIn(email, password) {
 }
 
 async function main() {
+  const token = process.env.SUPABASE_ACCESS_TOKEN
+  const projectRef = new URL(url).hostname.split('.')[0]
+
   console.log('SENTINEL RLS Verification')
   console.log('=========================\n')
+
+  // 0. Self-heal the two test accounts.
+  // The harness changes roles during the run (section 6, 14, 15) and a previous
+  // interrupted or manual test can leave the accounts in the wrong state, which
+  // would cascade into unrelated failures. Reset them first so every run starts
+  // from a known state: the admin account is an administrator, the other one is
+  // a plain student.
+  if (process.env.SUPABASE_ACCESS_TOKEN) {
+    try {
+      await sql(
+        `update public.profiles set role = 'administrator' where id = '${ADMIN_ID}'`,
+      )
+      await sql(
+        `update public.profiles set role = 'student' where id = '${STUDENT_ID}'`,
+      )
+      // Seeded categories can be left inactive by an interrupted run (the
+      // "inactive category" check deactivates one on purpose) - reactivate the
+      // school's categories so location creation works again.
+      await sql(
+        `update public.location_categories set is_active = true
+          where school_id = '11111111-1111-1111-1111-111111111111' and is_active = false`,
+      )
+      console.log('0. Test state reset (admin role, student role, school categories)\n')
+    } catch (e) {
+      console.log(`0. Test state reset failed: ${e.message}\n`)
+    }
+  }
 
   // 1. Anon access
   console.log('1. Anon access');
@@ -315,8 +345,6 @@ async function main() {
 
   // 9. Multi-school isolation (requires SUPABASE_ACCESS_TOKEN for SQL setup/cleanup)
   console.log('\n9. Multi-school isolation');
-  const token = process.env.SUPABASE_ACCESS_TOKEN
-  const projectRef = new URL(url).hostname.split('.')[0]
   async function sql(query) {
     const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
       method: 'POST',
@@ -1193,6 +1221,155 @@ async function main() {
   } else {
     log('Server-side observation stored with source and rule version', true,
       'skipped: SUPABASE_ACCESS_TOKEN not set')
+  }
+
+  // 17. Alerts (human-gated publication) and case notifications
+  console.log('\n17. Alerts');
+  const { data: anonAlerts } = await admin.from('alerts').select('*')
+  log('Anon blocked from alerts', (anonAlerts?.length ?? 0) === 0, `rows=${anonAlerts?.length ?? 0}`)
+  const { data: anonNotes } = await admin.from('incident_notifications').select('*')
+  log('Anon blocked from case notifications', (anonNotes?.length ?? 0) === 0,
+    `rows=${anonNotes?.length ?? 0}`)
+
+  const { error: studentDraft } = await studentClient.from('alerts').insert({
+    school_id: A, title: 'RLS student draft', body: 'RLS students may not draft alerts',
+    severity: 'info', target_scope: 'all',
+  })
+  log('Student cannot draft an alert', !!studentDraft, studentDraft?.message ?? 'no error?')
+
+  const draft = await adminClient.from('alerts').insert({
+    school_id: A, title: 'RLS drill tomorrow', body: 'RLS evacuation drill at 10:00, please follow staff instructions.',
+    severity: 'advisory', target_scope: 'all',
+  }).select('id, status, version').single()
+  log('Administrator drafts an alert', !draft.error && !!draft.data?.id, draft.error?.message ?? '')
+
+  if (draft.data?.id) {
+    const { error: studentPublish } = await studentClient.rpc('publish_alert', {
+      alert_id: draft.data.id,
+    })
+    log('Non-approver cannot publish', !!studentPublish, studentPublish?.message ?? 'no error?')
+
+    const { error: publishBeforeApprove } = await adminClient.rpc('publish_alert', {
+      alert_id: draft.data.id,
+    })
+    log('Publishing before approval rejected',
+      !!publishBeforeApprove && /approved before/i.test(publishBeforeApprove.message),
+      publishBeforeApprove?.message ?? 'no error?')
+
+    const { error: approveErr } = await adminClient.rpc('approve_alert', { alert_id: draft.data.id })
+    log('Administrator approves the alert', !approveErr, approveErr?.message ?? '')
+
+    const { error: publishErr } = await adminClient.rpc('publish_alert', { alert_id: draft.data.id })
+    log('Administrator publishes the alert', !publishErr, publishErr?.message ?? '')
+
+    const { data: studentRead } = await studentClient.from('alerts')
+      .select('id, status').eq('id', draft.data.id)
+    log('Published alert visible to students', (studentRead?.length ?? 0) === 1,
+      `rows=${studentRead?.length ?? 0}`)
+
+    const { data: nonAuthorUpdate } = await studentClient.from('alerts')
+      .update({ status: 'published' }).eq('id', draft.data.id).select('id')
+    log('Non-author cannot update an alert (0 rows)', (nonAuthorUpdate?.length ?? 0) === 0,
+      `rows=${nonAuthorUpdate?.length ?? 0}`)
+
+    const { data: directStatus } = await adminClient.from('alerts')
+      .update({ status: 'published' }).eq('id', draft.data.id).select('id')
+    log('Even the author cannot set the status directly',
+      (directStatus?.length ?? 0) === 0,
+      `rows=${directStatus?.length ?? 0}`)
+
+    const { data: alertDelete } = await adminClient.from('alerts')
+      .delete().eq('id', draft.data.id).select('id')
+    log('Client cannot delete an alert (0 rows)', (alertDelete?.length ?? 0) === 0,
+      `rows=${alertDelete?.length ?? 0}`)
+
+    // A responder-targeted alert must not be visible to a student
+    const respDraft = await adminClient.from('alerts').insert({
+      school_id: A, title: 'RLS responders only', body: 'RLS operational notice for responders only',
+      severity: 'urgent', target_scope: 'responders',
+    }).select('id').single()
+    const { error: respPublish } = await adminClient.rpc('approve_alert', { alert_id: respDraft.data?.id })
+    if (!respPublish) await adminClient.rpc('publish_alert', { alert_id: respDraft.data?.id })
+
+    const { data: studentScoped } = await studentClient.from('alerts')
+      .select('id').eq('id', respDraft.data?.id)
+    log('Student cannot read a responders-only alert', (studentScoped?.length ?? 0) === 0,
+      `rows=${studentScoped?.length ?? 0}`)
+
+    const { data: adminScoped } = await adminClient.from('alerts')
+      .select('id').eq('id', respDraft.data?.id)
+    log('Reviewer can read a responders-only alert', (adminScoped?.length ?? 0) === 1,
+      `rows=${adminScoped?.length ?? 0}`)
+
+    // Correction: a new version, the old row retained and marked corrected
+    const { data: correctedRaw, error: correctedError } = await adminClient.rpc('correct_alert', {
+      alert_id: draft.data.id,
+      new_title: 'RLS drill tomorrow (corrected)',
+      new_body: 'RLS evacuation drill at 11:00, please follow staff instructions.',
+      reason: 'RLS time corrected',
+    })
+    const correctedRow = Array.isArray(correctedRaw) ? correctedRaw[0] : correctedRaw
+    log('Correction creates a new version',
+      !correctedError && correctedRow?.version === 2,
+      correctedError?.message ?? `version=${correctedRow?.version}`)
+
+    const { data: oldVersion } = await adminClient.from('alerts')
+      .select('status').eq('id', draft.data.id).single()
+    log('Superseded alert is retained and marked corrected', oldVersion?.status === 'corrected',
+      `status=${oldVersion?.status}`)
+
+    // Cancellation applies to an alert that is still live (the published draft was
+    // superseded by the correction above and is closed).
+    const { error: cancelErr } = await adminClient.rpc('cancel_alert', {
+      alert_id: respDraft.data?.id,
+      reason: 'RLS cancelled',
+    })
+    log('Administrator cancels the alert', !cancelErr, cancelErr?.message ?? '')
+
+    const { data: cancelled } = await adminClient.from('alerts')
+      .select('status, cancel_reason').eq('id', respDraft.data?.id).single()
+    log('Cancelled alert is retained with a reason',
+      cancelled?.status === 'cancelled' && cancelled?.cancel_reason === 'RLS cancelled',
+      `status=${cancelled?.status}`)
+
+    const { data: alertAudit } = await adminClient.from('audit_logs')
+      .select('action').eq('entity_type', 'alerts')
+    const alertActions = new Set((alertAudit?.map((r) => r.action) ?? []))
+    log('Alert workflow is audited',
+      alertActions.has('alert_approved') && alertActions.has('alert_published')
+      && alertActions.has('alert_corrected') && alertActions.has('alert_cancelled'),
+      `actions=${[...alertActions].join(',')}`)
+  }
+
+  // A new case creates an operational notification that only reviewers can read
+  const noteIncident = await adminClient.from('incidents').insert({
+    school_id: A, category: 'emergency', description: 'RLS case for notification check',
+  }).select('id').single()
+  if (noteIncident.data?.id) {
+    const { data: reviewerNotes } = await adminClient.from('incident_notifications')
+      .select('id, case_ref').eq('incident_id', noteIncident.data.id)
+    log('New case creates a reviewer notification', (reviewerNotes?.length ?? 0) === 1,
+      `rows=${reviewerNotes?.length ?? 0}`)
+
+    const { data: studentNotes } = await studentClient.from('incident_notifications')
+      .select('id').eq('incident_id', noteIncident.data.id)
+    log('Students cannot read case notifications', (studentNotes?.length ?? 0) === 0,
+      `rows=${studentNotes?.length ?? 0}`)
+  }
+
+  if (token) {
+    try {
+      await sql(`delete from public.audit_logs where entity_type = 'alerts'`)
+      await sql(`delete from public.alerts where title like 'RLS %' or body like 'RLS %'`)
+      await sql(`delete from public.incident_notifications where title like 'New case %' or body like 'RLS %'`)
+      await sql(`delete from public.incident_notes where incident_id in (select id from public.incidents where description like 'RLS %')`)
+      await sql(`delete from public.incident_status_history where incident_id in (select id from public.incidents where description like 'RLS %')`)
+      await sql(`delete from public.incidents where description like 'RLS %'`)
+    } catch { /* best effort */ }
+    const leftAlerts = await sql(`select count(*)::int as n from public.alerts where title like 'RLS %'`)
+    log('Cleanup removed all test alerts', (leftAlerts[0]?.n ?? 0) === 0, `remaining=${leftAlerts[0]?.n}`)
+  } else {
+    log('Cleanup removed all test alerts', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
   }
 
   finish()

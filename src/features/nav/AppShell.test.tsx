@@ -96,14 +96,13 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: 'School locations' })).toBeInTheDocument()
   })
 
-  it('marks the not-yet-built alerts page as unavailable instead of linking to it', async () => {
+  it('offers alerts as a primary tab now that the feed exists', async () => {
     const user = userEvent.setup()
     renderShell('student')
-    await user.click(screen.getByRole('button', { name: /More/ }))
+    const nav = screen.getByRole('navigation', { name: 'Primary' })
+    expect(within(nav).getByRole('link', { name: /Alerts/ })).toBeInTheDocument()
 
-    const alerts = screen.getByText('Alerts').closest('span')
-    expect(alerts).not.toBeNull()
-    expect(alerts).toHaveAttribute('aria-disabled', 'true')
+    await user.click(screen.getByRole('button', { name: /More/ }))
     expect(screen.queryByRole('link', { name: 'Alerts' })).not.toBeInTheDocument()
   })
 

@@ -663,7 +663,7 @@ body {
   bottom: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 0.25rem;
   padding: 0.25rem 0.5rem calc(0.25rem + env(safe-area-inset-bottom));
   background: var(--card-bg);
@@ -866,7 +866,7 @@ button {
   }
 
   .bottom-nav {
-    grid-template-columns: repeat(4, max-content);
+    grid-template-columns: repeat(5, max-content);
     justify-content: center;
     gap: 0.5rem;
   }

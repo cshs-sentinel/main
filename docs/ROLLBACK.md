@@ -223,6 +223,30 @@ drop table if exists public.weather_observations;
 The Cloudflare Worker is undeployed separately:
 `npx wrangler delete --config worker/wrangler.toml` (also removes its secrets).
 
+For `20261021000016_alerts.sql` and `20261021000017_alert_workflow_flag.sql`
+(Phase 7 alerts and case notifications):
+
+```sql
+-- Removes the alert workflow, the alerts and the case notifications.
+-- WARNING: loses all alert drafts, publications, corrections and cancellations.
+drop trigger if exists incidents_notify on public.incidents;
+drop function if exists public.notify_new_incident();
+drop trigger if exists alerts_set_updated_at on public.alerts;
+drop trigger if exists alerts_validate on public.alerts;
+drop function if exists public.validate_alert();
+drop function if exists public.approve_alert(uuid);
+drop function if exists public.publish_alert(uuid);
+drop function if exists public.correct_alert(uuid, text, text, text);
+drop function if exists public.cancel_alert(uuid, text);
+drop function if exists public.my_role();
+drop policy if exists alerts_select_audience on public.alerts;
+drop policy if exists alerts_insert_staff on public.alerts;
+drop policy if exists alerts_update_own_draft on public.alerts;
+drop policy if exists incident_notifications_select_reviewers on public.incident_notifications;
+drop table if exists public.incident_notifications;
+drop table if exists public.alerts;
+```
+
 ### Option B: Point-in-time Restore
 
 If the project plan supports PITR:

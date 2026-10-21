@@ -16,6 +16,8 @@ import Sos from './features/incidents/Sos'
 import AdminIncidents from './features/admin/AdminIncidents'
 import Dashboard from './features/dashboard/Dashboard'
 import AppShell from './features/nav/AppShell'
+import Alerts from './features/alerts/Alerts'
+import AdminAlerts from './features/admin/AdminAlerts'
 
 function Home() {
   const { role } = useAuth()
@@ -50,6 +52,9 @@ function Home() {
           </li>
           <li>
             <Link to="/reports">Report a hazard</Link> — file a facility or safety problem.
+          </li>
+          <li>
+            <Link to="/alerts">Alerts</Link> — official announcements for the school.
           </li>
           {isReviewer && (
             <li>
@@ -89,8 +94,10 @@ export default function App() {
               <Route path="/reports" element={<Reports />} />
               <Route path="/check-in" element={<CheckIn />} />
               <Route path="/sos" element={<Sos />} />
+              <Route path="/alerts" element={<Alerts />} />
               <Route element={<RoleGuard allowed={['responder', 'administrator']} />}>
                 <Route path="/admin/reports" element={<AdminReports />} />
+                <Route path="/admin/alerts" element={<AdminAlerts />} />
                 <Route path="/incidents" element={<AdminIncidents />} />
               </Route>
               <Route element={<RoleGuard allowed={['administrator']} />}>

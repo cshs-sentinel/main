@@ -13,6 +13,7 @@ const PRIMARY_NAV: NavItem[] = [
   { to: '/', label: 'Home', hint: 'Overview' },
   { to: '/check-in', label: 'Check-In', hint: 'Record that you are safe' },
   { to: '/sos', label: 'SOS', hint: 'Raise an emergency case' },
+  { to: '/alerts', label: 'Alerts', hint: 'Official announcements' },
 ]
 
 export default function AppShell() {
@@ -29,6 +30,7 @@ export default function AppShell() {
     ...(isReviewer
       ? ([
           { to: '/admin/reports', label: 'Hazard report review' },
+          { to: '/admin/alerts', label: 'Alert management' },
           { to: '/incidents', label: 'Incident response' },
         ] as { to: string; label: string; note?: string }[])
       : []),
@@ -39,7 +41,6 @@ export default function AppShell() {
           { to: '/admin/schedules', label: 'Schedules' },
         ] as { to: string; label: string; note?: string }[])
       : []),
-    { to: '/alerts', label: 'Alerts', note: 'coming in the alerts phase' },
   ]
 
   return (

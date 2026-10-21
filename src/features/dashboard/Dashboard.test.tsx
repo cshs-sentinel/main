@@ -188,11 +188,11 @@ describe('Dashboard', () => {
     expect(within(section as HTMLElement).getByText(/student: 38/)).toBeInTheDocument()
   })
 
-  it('states that alerts are not available yet and that weather is reviewer-only', async () => {
+  it('states that weather is reviewer-only and points to the alerts feed', async () => {
     renderPage('student', { role: 'student' })
     expect(await screen.findByText('Not available yet')).toBeInTheDocument()
-    expect(screen.getByText(/Published alerts/)).toBeInTheDocument()
     expect(screen.getByText(/Weather advisory — shown to responders/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Alerts' })).toHaveAttribute('href', '/alerts')
   })
 
   it('shows an error when the counts call fails', async () => {

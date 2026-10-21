@@ -36,12 +36,12 @@ is never committed.
 
 ## Current state
 
-Phases 1–5 complete (Gate 1–5 approved). Phase 6 (server-side weather + heat-index
-advisory) is implemented, tested against the NOAA reference table and **deployed**:
-a Cloudflare Worker fetches the observation, computes the heat index with the same
-pure module the app tests, and serves it with source, timestamps, freshness and
-rule version (migrations 0001–0015). Gate 6 evidence is in
-`docs/GATE6_EVIDENCE.md`; the formula spec is in `docs/HEAT_INDEX.md`.
+Phases 1–6 complete (Gate 1–6 approved). Phase 7 (in-app alerts) is implemented and
+externally verified: drafts, administrator approval and publication, corrections
+that retain the old version, cancellations with a reason, full audit history, and
+automatic new-case notices for responders — with **no external delivery** and no
+claim of delivery anywhere (migrations 0001–0017). Gate 7 evidence is in
+`docs/GATE7_EVIDENCE.md`.
 See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 
 ## Documentation
@@ -54,6 +54,7 @@ See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 - `docs/GATE4_EVIDENCE.md` — Gate 4 evidence pack
 - `docs/GATE5_EVIDENCE.md` — Gate 5 evidence pack
 - `docs/GATE6_EVIDENCE.md` — Gate 6 evidence pack
+- `docs/GATE7_EVIDENCE.md` — Gate 7 evidence pack
 - `docs/HEAT_INDEX.md` — heat index formula, units, applicability and rule version
 - `docs/MANUAL_FALLBACK.md` — manual fallback and response responsibilities
 - `docs/FIRST_ADMIN.md` — first administrator provisioning

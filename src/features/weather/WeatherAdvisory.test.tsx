@@ -95,6 +95,30 @@ describe('WeatherAdvisory', () => {
     expect(screen.getByText(/No live weather reading/)).toBeInTheDocument()
   })
 
+  it('marks a live observation as stale when the worker reports it as stale', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ...LIVE_ADVISORY,
+        freshness: { age_seconds: 7200, stale_after_seconds: 3600, stale: true },
+      }),
+    }) as unknown as Response)
+    render(<WeatherAdvisory />)
+    expect(await screen.findByText(/STALE/)).toBeInTheDocument()
+  })
+
+  it('marks a live observation as stale from observed_at when the worker omits freshness', async () => {
+    const { freshness: _omitted, ...withoutFreshness } = LIVE_ADVISORY
+    vi.stubGlobal('fetch', async () => ({
+      ok: true,
+      status: 200,
+      json: async () => withoutFreshness,
+    }) as unknown as Response)
+    render(<WeatherAdvisory />)
+    expect(await screen.findByText(/STALE/)).toBeInTheDocument()
+  })
+
   it('shows the last stored observation as stale when the service is down', async () => {
     state.results['weather_observations:select'] = {
       data: [

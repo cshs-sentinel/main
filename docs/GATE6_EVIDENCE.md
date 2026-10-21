@@ -5,9 +5,17 @@ Phase 6 completion evidence per `SENTINEL_OPENCODE_VIBE_CODING_GUIDE.md` §6:
 automatic official decision is made."**
 
 Status: **PASS** — external verification **175/175** (sections 1–16, including the new
-weather section), **132/132** unit tests (42 of them heat-index reference and edge
-cases against the NOAA reference table), lint 0/0, typecheck ✓, build ✓. The weather
-worker is **deployed and live**.
+weather section), **139/139** unit tests (42 heat-index reference and edge cases
+against the NOAA reference table, 5 worker tests, 7 advisory UI tests), lint 0/0,
+typecheck ✓, build ✓. The weather worker is **deployed and live** (see §7 for the
+one pending redeploy after the staleness correction).
+
+> **Correction (Task 6.5).** The worker and the UI originally measured staleness
+> from the *fetch* timestamp, which is always current, so `freshness.stale` and the
+> stored `is_stale` column could never be true and the live "STALE" marker could
+> never appear. Both now measure the age of the **observation** (`observed_at`),
+> which is what the freshness window is defined against. `worker/worker.test.ts`
+> is the regression test; it fails against the previous implementation.
 
 ---
 
@@ -41,7 +49,7 @@ rule version. The module never throws — invalid input returns
 | Situation | Behaviour | Evidence |
 |---|---|---|
 | Live observation | Shows air temperature, humidity, heat index, band, source, `observed_at`, `fetched_at`, age in seconds and the rule version | `WeatherAdvisory.test.tsx` + live worker response |
-| Observation older than the freshness window (1 h) | Flagged **STALE** in the UI and in the API (`freshness.stale`) | `heatIndex.test.ts` (freshness cases), UI renders "STALE" |
+| Observation older than the freshness window (1 h) | Flagged **STALE** in the API (`freshness.stale`) and in the stored row (`is_stale: true`), and rendered as **STALE** in the UI | `worker/worker.test.ts` (*flags an observation older than the freshness window as stale*), `heatIndex.test.ts` (freshness cases), `WeatherAdvisory.test.tsx` (*marks a live observation as stale*) |
 | Upstream provider unreachable | The worker answers **502** with `available: false`; the UI shows *"weather unavailable"* and never an old value as if it were current | `WeatherAdvisory.test.tsx` (*reports an unavailable weather service explicitly*) |
 | Service unreachable but a stored observation exists | The last stored reading is shown **with its age and a STALE marker** | `WeatherAdvisory.test.tsx` (*shows the last stored observation as stale*) |
 | Heat index not applicable (T < 27 °C or RH < 40 %) | `value_c: null` or an advisory-only value, with the reason shown in the UI | worker response + UI notes |
@@ -70,6 +78,7 @@ rule version. The module never throws — invalid input returns
 | Retrieval | `worker/index.ts` | fetch the observation, call the calculation module, stamp source/timestamp/units/freshness/rule version, store the observation, serve the advisory |
 | Computation | `src/features/weather/heatIndex.ts` | pure calculation — no I/O, no decisions, 42 unit tests |
 | Presentation | `src/features/weather/WeatherAdvisory.tsx` | show the value, the provenance, and the missing/stale states |
+| Worker tests | `worker/worker.test.ts` | exercise the deployed handler end to end with a mocked provider: fresh, stale, stored-row provenance, provider failure, not-applicable heat index |
 
 The worker imports **the same module** the browser tests, so there is no second
 implementation to drift. The worker's service-role key lives only as a Cloudflare
@@ -93,16 +102,17 @@ secret — it is never in the browser bundle and never in the repository.
 |---|---|
 | `npm run lint` | 0 warnings, 0 errors |
 | `npm run typecheck` | exit 0 |
-| `npm run test` | 132/132 (18 files) |
+| `npm run test` | 139/139 (19 files) — 42 heat-index, 5 worker, 7 advisory UI, 85 pre-existing |
 | `npm run build` | exit 0 |
 | `node scripts/verify-rls.mjs` (token) | **175/175 passed**, sections 1–16 |
-| `npx wrangler deploy --config worker/wrangler.toml` | worker live at `https://sentinel-weather.sentinelcshs.workers.dev` |
+| `npx wrangler deploy --config worker/wrangler.toml` | worker live at `https://sentinel-weather.sentinelcshs.workers.dev` — **redeploy pending for the Task 6.5 staleness correction** |
 
 Migration `20261021000015_weather_observations.sql` applied to the dev project;
 inverse SQL in `docs/ROLLBACK.md`.
 
 ## 7. Known limitations
 
+- **The deployed worker still carries the pre-correction staleness logic.** The Task 6.5 fix is committed but the worker has not been redeployed, so the live endpoint still reports `freshness.stale: false` unconditionally. The fix must be redeployed before the live "STALE" marker can be observed in production.
 - **The coordinates are placeholders** (0.0000, 0.0000) — the advisory is labelled as such and must be set to the school's real coordinates (`worker/wrangler.toml` vars) before any pilot. Weather for the wrong place is worse than no weather.
 - Only **current** conditions are ingested — no forecast, no hourly series, no multi-day outlook.
 - The heat index ignores wind, direct sun, activity and every indoor factor; it is not a classroom temperature.

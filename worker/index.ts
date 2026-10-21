@@ -166,7 +166,7 @@ export default {
     }
 
     const heatIndex = computeHeatIndex(observation.temperatureC, observation.humidityPercent)
-    const stale = isObservationStale(fetchedAt)
+    const stale = isObservationStale(observation.observedAt)
     await storeObservation(env, observation, heatIndex, fetchedAt, stale)
 
     const observedAtMs = Date.parse(observation.observedAt)

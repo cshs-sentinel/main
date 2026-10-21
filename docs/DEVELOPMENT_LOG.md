@@ -85,6 +85,7 @@ available yet" rather than faked.
 | 6.2 | *pending* | `worker/index.ts` + `worker/wrangler.toml` (Cloudflare Worker, service-role secret), deployed as `sentinel-weather` | live worker response + storage check | done |
 | 6.3 | *pending* | `src/features/weather/WeatherAdvisory.tsx` + tests, dashboard wiring, verify-rls §16 | 5 UI tests, 6 API checks | done |
 | 6.4 | *pending* | `docs/GATE6_EVIDENCE.md`, ARCHITECTURE/ROLLBACK updates | verify-rls 175/175, 132 unit tests | done — **awaiting Gate 6 review** |
+| 6.5 | *pending* | `worker/index.ts` (staleness from `observed_at`), `src/features/weather/WeatherAdvisory.tsx` (same), `worker/worker.test.ts` (new) | 5 worker tests, 7 UI tests | done |
 
 Weather model (Phase 6): the NOAA/NWS Rothfusz regression lives in a pure module
 tested against the NOAA reference table; the Cloudflare Worker fetches the
@@ -93,6 +94,15 @@ version, stores the observation server-side and serves the advisory. The advisor
 is advisory-only, visible to responders and administrators, and never triggers an
 automatic action. The school coordinates are still placeholders and are labelled
 as such until the real location is configured.
+
+Staleness correction (Task 6.5): the worker and the UI computed staleness from the
+*fetch* timestamp, which is always current, so `freshness.stale` and the stored
+`is_stale` column could never become true and the live "STALE" marker could never
+appear — contradicting `docs/HEAT_INDEX.md` §6 and `docs/ARCHITECTURE.md` §7. Both
+now measure the age of the **observation** (`observed_at`), which is what the
+freshness window is defined against. `worker/worker.test.ts` covers it: an
+observation two hours old is reported stale and stored with `is_stale: true`, while
+a current one is not.
 
 Implemented report model (migrations 0007–0008): any authenticated member files a
 report for their own school as themselves; a report is readable by its reporter and

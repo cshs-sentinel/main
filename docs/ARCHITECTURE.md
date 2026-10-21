@@ -474,7 +474,7 @@ Where T = dry-bulb temperature (°F), RH = relative humidity (%).
 
 **Applicability:** Valid when T ≥ 80°F and RH ≥ 40% (approx.). Below that, return "not applicable" rather than a misleading number.
 
-**Freshness:** Weather observation older than `FRESHNESS_THRESHOLD_MINUTES` (e.g., 30) → `is_stale=true`; UI shows "Data may be outdated" and does not present the number as current.
+**Freshness:** An observation older than the freshness window (**3600 s / 1 hour**, `STALE_AFTER_SECONDS` in `src/features/weather/heatIndex.ts`) → `is_stale=true` in the stored row, `freshness.stale=true` in the API and **STALE** in the UI; the number is never presented as current. The window is measured against the **observation** timestamp (`observed_at`), not the fetch timestamp.
 
 **Disclaimer (must appear in UI):** "External weather data are not indoor classroom measurements. This value is advisory only and does not automatically suspend classes or trigger emergency actions."
 

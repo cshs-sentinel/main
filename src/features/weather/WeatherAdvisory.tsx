@@ -127,7 +127,7 @@ export default function WeatherAdvisory() {
   const band = live?.heat_index?.applicable
     ? (live.heat_index.band ?? bandForHeatIndexC(heatIndexC))
     : 'none'
-  const stale = live?.freshness?.stale ?? isObservationStale(live?.fetched_at ?? '')
+  const stale = live?.freshness?.stale ?? isObservationStale(live?.observed_at ?? '')
 
   return (
     <section className="dash-section">
@@ -192,9 +192,9 @@ export default function WeatherAdvisory() {
             <p className="loc-meta">
               Last recorded reading: {stored.temperature_c} C, {stored.humidity_percent}% humidity
               {stored.heat_index_c !== null ? `, heat index ${stored.heat_index_c} C` : ''} — from{' '}
-              {stored.fetched_at}
-              {isObservationStale(stored.fetched_at) ? ' (STALE)' : ''} (source {stored.source}, rule{' '}
-              {stored.rule_version}, age {observationAgeSeconds(stored.fetched_at)}s).
+              {stored.observed_at}
+              {isObservationStale(stored.observed_at) ? ' (STALE)' : ''} (source {stored.source}, rule{' '}
+              {stored.rule_version}, age {observationAgeSeconds(stored.observed_at)}s).
             </p>
           )}
         </>

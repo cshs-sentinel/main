@@ -1,0 +1,21 @@
+# Cloudflare configuration for SENTINEL.
+#
+# The app itself is a static SPA -> Cloudflare Pages (free tier).
+# Server-side needs (weather fetch with a secret key, Phase 6) belong in a
+# separate Worker project so secrets never ship to the browser.
+#
+# Deploy with:  npm run deploy
+# (wrangler is invoked through npx; add it as a devDependency if you prefer a
+#  pinned local version — that is a dependency change and needs approval.)
+
+name = "sentinel-app"
+compatibility_date = "2026-10-21"
+pages_build_output_dir = "dist"
+
+# No bindings are declared here on purpose:
+#  * VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are PUBLIC (publishable) keys
+#    baked into the bundle at build time; they are safe only because RLS
+#    protects every table (verified by scripts/verify-rls.mjs).
+#  * SUPABASE_SERVICE_ROLE_KEY and WEATHER_API_KEY must never be set here as
+#    plain-text vars for the Pages build — they belong in Worker/Pages Function
+#    secrets in the separate server-side project.

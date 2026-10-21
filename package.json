@@ -10,7 +10,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "npm run build && npx wrangler pages deploy dist --project-name sentinel-app",
+    "deploy:list": "npx wrangler pages deployment list --project-name sentinel-app"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

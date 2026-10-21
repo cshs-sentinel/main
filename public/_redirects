@@ -1,0 +1,4 @@
+# Cloudflare Pages — SPA fallback.
+# React Router (BrowserRouter) serves client-side routes such as /sos and
+# /incidents; without this rule a refresh or a shared link would 404.
+/*    /index.html   200

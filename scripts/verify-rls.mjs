@@ -1,4 +1,4 @@
-// RLS verification for SENTINEL identity, locations, and multi-school migrations.
+// RLS verification for SENTINEL identity, locations, schedules, and multi-school migrations.
 // Uses existing test users created in the dashboard.
 // Run: node scripts/verify-rls.mjs
 // Set SUPABASE_ACCESS_TOKEN to include multi-school (section 9) checks.
@@ -163,7 +163,8 @@ async function main() {
 
   const TEST_LOCATION_NAMES = ['Test Campus', 'Test Main Building', 'Test Floor 2', 'RLS Room 204',
     'RLS Room 205', 'RLS School Garden', 'RLS Misplaced', 'RLS Under Archived',
-    'RLS Robotics Room', 'RLS Inactive Cat Room', 'RLS Student Should Fail', 'rls room 204']
+    'RLS Robotics Room', 'RLS Inactive Cat Room', 'RLS Student Should Fail', 'rls room 204',
+    'RLS Schedule Room']
 
   // Pre-clean: archive leftovers from a failed prior run (synthetic test names only)
   await adminClient.from('locations')
@@ -379,6 +380,137 @@ async function main() {
       try { await cleanupSchoolB() } catch { /* best effort */ }
     }
   }
+
+  // 10. Schedules (effective-dated, conflict-checked, no client delete)
+  console.log('\n10. Schedules');
+  const { data: anonSched } = await admin.from('schedules').select('*')
+  log('Anon blocked from schedules', (anonSched?.length ?? 0) === 0, `rows=${anonSched?.length ?? 0}`)
+
+  // Pre-clean: deactivate leftover test schedules (no client delete), archive leftover test room
+  await adminClient.from('schedules')
+    .update({ status: 'inactive' })
+    .eq('status', 'active')
+    .like('label', 'RLS %')
+  await adminClient.from('locations')
+    .update({ status: 'archived' })
+    .eq('status', 'active')
+    .eq('name', 'RLS Schedule Room')
+
+  const schedRoom = await mkLoc({
+    school_id: A, name: 'RLS Schedule Room', category_id: catId('Room'), environment: 'indoor',
+  })
+  log('Admin creates scheduling room', !schedRoom.error, schedRoom.error?.message ?? '')
+
+  if (schedRoom.data) {
+    const mkSched = (fields) =>
+      adminClient.from('schedules').insert({ school_id: A, location_id: schedRoom.data.id, ...fields })
+
+    const sCreate = await mkSched({ day_of_week: 1, start_time: '08:00', end_time: '09:00', label: 'RLS Period 1' })
+    log('Admin creates schedule', !sCreate.error, sCreate.error?.message ?? '')
+
+    const overlap = await mkSched({ day_of_week: 1, start_time: '08:30', end_time: '09:30', label: 'RLS Overlap' })
+    log('Overlapping schedule rejected', !!overlap.error && /overlap/i.test(overlap.error.message),
+      overlap.error?.message ?? 'no error?')
+
+    const adjacent = await mkSched({ day_of_week: 1, start_time: '09:00', end_time: '10:00', label: 'RLS Period 2' })
+    log('Adjacent schedule allowed', !adjacent.error, adjacent.error?.message ?? '')
+
+    const otherDay = await mkSched({ day_of_week: 2, start_time: '08:00', end_time: '09:00', label: 'RLS Tue P1' })
+    log('Same time on another day allowed', !otherDay.error, otherDay.error?.message ?? '')
+
+    const inactive = await adminClient.from('schedules').insert({
+      school_id: A, location_id: schedRoom.data.id,
+      day_of_week: 1, start_time: '08:00', end_time: '09:00', label: 'RLS Shadow', status: 'inactive',
+    }).select('id').single()
+    log('Inactive conflicting row allowed', !inactive.error, inactive.error?.message ?? '')
+
+    const activateShadow = inactive.data
+      ? await adminClient.from('schedules').update({ status: 'active' }).eq('id', inactive.data.id)
+      : { error: new Error('inactive insert failed') }
+    log('Activating conflicting row rejected',
+      !!activateShadow.error && /overlap/i.test(activateShadow.error.message),
+      activateShadow.error?.message ?? 'no error?')
+
+    const badTime = await mkSched({ day_of_week: 3, start_time: '10:00', end_time: '09:00', label: 'RLS Bad Time' })
+    log('End before start rejected', !!badTime.error && /end time must be after/i.test(badTime.error.message),
+      badTime.error?.message ?? 'no error?')
+
+    const badRange = await mkSched({
+      day_of_week: 3, start_time: '10:00', end_time: '11:00', label: 'RLS Bad Range',
+      effective_from: '2026-06-01', effective_until: '2026-05-01',
+    })
+    log('Effective range order rejected', !!badRange.error && /effective until/i.test(badRange.error.message),
+      badRange.error?.message ?? 'no error?')
+
+    const xSchool = await adminClient.from('schedules').insert({
+      school_id: B, location_id: schedRoom.data.id,
+      day_of_week: 4, start_time: '08:00', end_time: '09:00', label: 'RLS Cross',
+    })
+    log('Cross-school schedule insert denied',
+      !!xSchool.error && /row-level security|different school/i.test(xSchool.error.message),
+      xSchool.error?.message ?? 'no error?')
+
+    const sInsert = await studentClient.from('schedules').insert({
+      school_id: A, location_id: schedRoom.data.id,
+      day_of_week: 5, start_time: '08:00', end_time: '09:00', label: 'RLS Student',
+    })
+    log('Student schedule insert denied', !!sInsert.error, sInsert.error?.message ?? 'no error?')
+
+    const sUpd = await studentClient.from('schedules')
+      .update({ label: 'Hijacked' }).eq('label', 'RLS Period 1').select('id')
+    log('Student schedule update blocked', !sUpd.error && (sUpd.data?.length ?? 0) === 0,
+      sUpd.error?.message ?? `rows=${sUpd.data?.length}`)
+
+    const sDel = await studentClient.from('schedules').delete().eq('label', 'RLS Period 1').select('id')
+    log('Student schedule delete blocked (0 rows)', !sDel.error && (sDel.data?.length ?? 0) === 0,
+      sDel.error?.message ?? `rows=${sDel.data?.length}`)
+
+    const aDel = await adminClient.from('schedules').delete().eq('label', 'RLS Period 1').select('id')
+    log('Admin schedule delete blocked — deactivate only', !aDel.error && (aDel.data?.length ?? 0) === 0,
+      aDel.error?.message ?? `rows=${aDel.data?.length}`)
+
+    const intact = await adminClient.from('schedules')
+      .select('label, status').eq('label', 'RLS Period 1').eq('status', 'active').maybeSingle()
+    log('Schedule intact after delete attempts', intact.data?.label === 'RLS Period 1',
+      `label=${intact.data?.label ?? 'missing'}`)
+
+    await adminClient.from('locations').update({ status: 'archived' }).eq('id', schedRoom.data.id)
+    const afterArch = await mkSched({ day_of_week: 4, start_time: '10:00', end_time: '11:00', label: 'RLS After Archive' })
+    log('Schedule on archived location rejected', !!afterArch.error && /archived location/i.test(afterArch.error.message),
+      afterArch.error?.message ?? 'no error?')
+
+    const sRead = await studentClient.from('schedules').select('id, label')
+    log('Student reads own-school schedules', !sRead.error, sRead.error?.message ?? `rows=${sRead.data?.length}`)
+  } else {
+    log('Schedule checks', false, 'room setup failed, skipping')
+  }
+
+  // Cleanup: deactivate all active test schedules (no client delete), archive test room.
+  // Deactivation updates are what produce 'update' audit rows for schedules.
+  await adminClient.from('schedules')
+    .update({ status: 'inactive' })
+    .eq('status', 'active')
+    .like('label', 'RLS %')
+  if (token) {
+    try {
+      await sql(`delete from public.schedules where label like 'RLS %'`)
+    } catch {
+      /* best effort: deactivate-only fallback already ran */
+    }
+  }
+  await adminClient.from('locations')
+    .update({ status: 'archived' })
+    .eq('status', 'active')
+    .eq('name', 'RLS Schedule Room')
+  const leftSched = await adminClient.from('schedules')
+    .select('id').eq('status', 'active').like('label', 'RLS %')
+  log('Cleanup deactivated all active test schedules', (leftSched.data ?? []).length === 0,
+    `active=${leftSched.data?.length}`)
+
+  const schedAudit = await adminClient.from('audit_logs').select('action, entity_type').eq('entity_type', 'schedules')
+  const schedActions = new Set((schedAudit.data ?? []).map((r) => r.action))
+  log('Schedule changes audited', schedActions.has('create') && schedActions.has('update'),
+    `actions=${[...schedActions].join(',')}`)
 
   finish()
 }

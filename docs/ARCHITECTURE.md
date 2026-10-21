@@ -101,7 +101,7 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 | `/incidents/:ref` | Incident detail + timeline | Auth + role | responder, admin |
 | `/dashboard` | Role-specific dashboard | Auth + role | All (variant) |
 | `/admin/users` | User management | Auth | administrator |
-| `/admin/structure` | Buildings/rooms CRUD | Auth | administrator |
+| `/admin/structure` | Locations CRUD | Auth | administrator |
 | `/admin/schedules` | Schedule management | Auth | administrator |
 | `/alerts` | Alert feed | Auth | All |
 | `/admin/alerts/new` | Alert composer | Auth | responder (approver), admin |
@@ -164,8 +164,8 @@ profiles *──0..1 locations (primary_location_id, optional)
 locations 1──* locations (parent_id, optional; indoor + outdoor + custom)
 locations *──1 location_categories
 
-schedules *──1 profiles (user)
-schedules *──1 locations
+schedules *──1 schools
+schedules *──1 locations (expected place; no person FK)
 
 check_ins *──1 profiles
 check_ins *──1 locations (optional)
@@ -201,7 +201,7 @@ school-scoped and archive-only (no client deletes).
 | `profiles` | id (=auth.uid), role, display_name, school_id, primary_location_id | User reads own; admin reads own-school only |
 | `location_categories` | id, school_id, name (unique/school, ci), environment, is_active | Own-school read; admin insert/update; no delete (deactivate) |
 | `locations` | id, school_id, parent_id (optional self-FK), category_id, name, code, environment, status, access_level | Own-school read; admin insert/update; **no client delete (archive-only)** |
-| `schedules` | id, profile_id, location_id, valid_from, valid_to, day_of_week | User own; staff building |
+| `schedules` | id, school_id, location_id, day_of_week (0–6), start_time, end_time, effective_from, effective_until, label, status | Own-school read (all roles); admin insert/update; **no client delete (deactivate)** |
 | `check_ins` | id, profile_id, location_id, location_source, checked_in_at, period | User own write/read; responder building read |
 | `hazard_reports` | id, reporter_id, category, description, location_id, status | Reporter + responder/admin |
 | `report_attachments` | id, report_id, storage_path | Via report RLS + storage policy |
@@ -219,6 +219,16 @@ category must match school/environment, case-insensitive sibling-name uniqueness
 immutable (trigger). Historical FK references survive renames/archival because
 records store location UUIDs.
 
+**Schedules server-side validation** (trigger `validate_schedule`, migration
+0006): friendly messages for `end_time > start_time` and
+`effective_until >= effective_from`; the referenced location must exist, belong
+to the same school, and not be archived (checked on insert/location change);
+overlapping **active** times for the same location + weekday are rejected
+(inactive rows never conflict; effective ranges must intersect, NULL
+`effective_until` = open-ended). `school_id` is immutable (shared trigger);
+changes are audited. A schedule row records where someone is *expected* — it is
+never presented as verified occupancy.
+
 ### 4.3 Enums / status values (check constraints)
 
 - `app_role`: student, teacher_staff, responder, administrator, (system_operator)
@@ -226,6 +236,8 @@ records store location UUIDs.
 - `locations.environment`: indoor, outdoor, covered
 - `locations.access_level`: public, staff, restricted
 - `location_categories.environment`: indoor, outdoor, either
+- `schedules.status`: active, inactive
+- `schedules.day_of_week`: 0–6 (0 = Sunday, JS `Date.getDay()` convention)
 - `incident_status`: new, acknowledged, assigned, in_progress, resolved, closed, cancelled
 - `report_status`: submitted, under_review, resolved, dismissed
 - `location_source`: self_selected, schedule_derived, staff_verified

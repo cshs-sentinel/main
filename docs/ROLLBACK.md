@@ -72,6 +72,22 @@ drop table if exists public.schools;
 -- (re-run supabase migration 20261021000002_school_structure.sql)
 ```
 
+For `20261021000006_schedules.sql` (Phase 2 schedules):
+
+```sql
+-- Rollback schedules migration (run only if explicitly approved)
+-- WARNING: loses all schedule rows; locations and profiles are untouched.
+drop trigger if exists schedules_audit on public.schedules;
+drop trigger if exists schedules_no_school_reassign on public.schedules;
+drop trigger if exists schedules_set_updated_at on public.schedules;
+drop trigger if exists schedules_validate on public.schedules;
+drop function if exists public.validate_schedule();
+drop policy if exists schedules_select_school on public.schedules;
+drop policy if exists schedules_insert_admin on public.schedules;
+drop policy if exists schedules_update_admin on public.schedules;
+drop table if exists public.schedules;
+```
+
 ### Option B: Point-in-time Restore
 
 If the project plan supports PITR:

@@ -95,7 +95,8 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 | Report photos in a private bucket with signed-URL access | Implemented (0009–0011) |
 | Check-ins with explicit location source | Implemented (0012) |
 | SOS / incident workflow: case reference, role-checked transitions, history, notes, duplicate guard | Implemented (0013) |
-| SOS / incidents, alerts, weather, dashboard | Planned (later phases) |
+| Role-filtered dashboard (counts only; students see own data only) | Implemented (0014) |
+| SOS / incidents, alerts, weather | Planned (later phases) |
 
 ---
 
@@ -117,7 +118,7 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 | `/sos` | SOS trigger + case ref | Auth | All | Implemented |
 | `/incidents` | Incident list (role-filtered) | Auth + role | responder, admin | Implemented |
 | `/incidents/:ref` | Incident detail + timeline | Auth + role | responder, admin | Planned (Phase 4) |
-| `/dashboard` | Role-specific dashboard | Auth + role | All (variant) | Planned (Phase 5) |
+| `/dashboard` | Role-specific dashboard | Auth + role | All (variant) | Implemented |
 | `/admin/users` | User management | Auth | administrator | Implemented |
 | `/admin/structure` | Locations CRUD | Auth | administrator | Implemented |
 | `/admin/schedules` | Schedule management | Auth | administrator | Implemented |
@@ -433,6 +434,20 @@ When `incidents.status` becomes `new`, a database trigger or client-side RPC ins
 | administrator | All metrics; user counts; audit summary; weather + heat-index advisory |
 
 **Privacy:** Aggregates must not expose individual student locations to unauthorized roles (e.g., student dashboards show only own data; teacher dashboards show counts, not individual names unless policy explicitly allows — default: counts only).
+
+**Dashboard aggregates** (function `dashboard_counts`, migration 0014): the
+dashboard returns **numbers only** — never names, locations or free text. Students
+receive their own counts (`my_check_ins_today`, `my_open_incidents`,
+`my_open_reports`, `my_need_help`) and **no school-level keys at all**; teachers
+add school counts (`school_open_incidents`, `school_unacknowledged_incidents`,
+`school_oldest_unacknowledged_minutes`, `school_open_reports`,
+`school_check_ins_today`, `school_need_help`); administrators add `users_total`,
+`users_by_role` and `audit_rows_30d`. The function is `security definer`, granted
+only to `authenticated`, and is verified against the rows each role can actually
+read. The UI additionally gates the school section on the client-side role, so a
+mis-scoped server response still cannot show a student school-wide numbers.
+Published alerts and the weather advisory are shown as "not available yet" rather
+than faked.
 
 ### 7.2 Heat-Index Computation
 

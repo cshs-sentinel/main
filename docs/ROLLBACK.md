@@ -202,6 +202,15 @@ drop table if exists public.incidents;
 drop table if exists public.incident_case_refs;
 ```
 
+For `20261021000014_dashboard_counts.sql` (Phase 5 dashboard aggregates):
+
+```sql
+-- Removes the dashboard aggregate function. The dashboard UI then shows an
+-- explicit error until the function is re-applied.
+revoke execute on function public.dashboard_counts() from authenticated;
+drop function if exists public.dashboard_counts();
+```
+
 ### Option B: Point-in-time Restore
 
 If the project plan supports PITR:

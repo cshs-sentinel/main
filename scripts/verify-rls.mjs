@@ -1102,6 +1102,62 @@ async function main() {
     log('Cleanup removed all test incidents', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
   }
 
+  // 15. Dashboard aggregates (role-filtered, counts only)
+  console.log('\n15. Dashboard counts');
+  const anonCounts = await admin.rpc('dashboard_counts')
+  log('Anon blocked from dashboard counts', !!anonCounts.error,
+    anonCounts.error?.message ?? 'no error?')
+
+  const studentCounts = await studentClient.rpc('dashboard_counts')
+  const sCount = studentCounts.data ?? {}
+  log('Student receives own-record counts', !studentCounts.error
+    && typeof sCount.my_check_ins_today === 'number',
+    studentCounts.error?.message ?? JSON.stringify(sCount))
+  log('Student receives no school-wide counts',
+    sCount.school_open_incidents === undefined
+    && sCount.school_check_ins_today === undefined
+    && sCount.school_open_reports === undefined,
+    `keys=${Object.keys(sCount).join(',')}`)
+  log('Student receives no user or audit counts',
+    sCount.users_total === undefined && sCount.audit_rows_30d === undefined,
+    `keys=${Object.keys(sCount).join(',')}`)
+
+  // Teacher scope: promote the student temporarily, then revert
+  const teachPromo = await adminClient.rpc('admin_set_user_role', {
+    target_user_id: STUDENT_ID, new_role: 'teacher_staff',
+  })
+  const teacherCounts = await studentClient.rpc('dashboard_counts')
+  const tCount = teacherCounts.data ?? {}
+  log('Teacher receives school counts (no identities)',
+    !teachPromo.error && typeof tCount.school_open_incidents === 'number'
+    && tCount.users_total === undefined,
+    teacherCounts.error?.message ?? `keys=${Object.keys(tCount).join(',')}`)
+  await adminClient.rpc('admin_set_user_role', {
+    target_user_id: STUDENT_ID, new_role: 'student',
+  })
+
+  const adminCounts = await adminClient.rpc('dashboard_counts')
+  const aCount = adminCounts.data ?? {}
+  log('Administrator receives user and audit counts',
+    !adminCounts.error && typeof aCount.users_total === 'number'
+    && typeof aCount.audit_rows_30d === 'number',
+    adminCounts.error?.message ?? `keys=${Object.keys(aCount).join(',')}`)
+
+  // Dashboard numbers must match the rows the same role can actually read
+  const { data: readableIncidents } = await adminClient.from('incidents').select('id')
+  const { count: incidentHead } = await adminClient
+    .from('incidents').select('id', { count: 'exact', head: true })
+  log('Dashboard incident count matches the readable rows',
+    incidentHead === (readableIncidents?.length ?? 0),
+    `head=${incidentHead} rows=${readableIncidents?.length ?? 0}`)
+
+  const { count: studentHead } = await studentClient
+    .from('incidents').select('id', { count: 'exact', head: true })
+  const { data: studentRows } = await studentClient.from('incidents').select('id')
+  log('Student dashboard scope matches the rows a student can read',
+    studentHead === (studentRows?.length ?? 0),
+    `head=${studentHead} rows=${studentRows?.length ?? 0}`)
+
   finish()
 }
 

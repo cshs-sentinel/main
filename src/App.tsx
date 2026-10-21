@@ -14,6 +14,7 @@ import Reports from './features/reports/Reports'
 import CheckIn from './features/checkin/CheckIn'
 import Sos from './features/incidents/Sos'
 import AdminIncidents from './features/admin/AdminIncidents'
+import Dashboard from './features/dashboard/Dashboard'
 import { supabase } from './lib/supabase'
 
 function Home() {
@@ -25,6 +26,9 @@ function Home() {
       <h1>SENTINEL</h1>
       <p>Smart Emergency Network for Tracking Incidents, Notifications, Evaluation, and Logistics.</p>
       <p>You are signed in{role ? ` as ${role}` : ''}.</p>
+      <p>
+        <Link to="/dashboard">Dashboard</Link>
+      </p>
       <p>
         <Link to="/check-in">Safety check-in</Link>
       </p>
@@ -76,6 +80,7 @@ export default function App() {
           <Route path="/signup" element={<SignUp />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Home />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/schedule" element={<Schedule />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/check-in" element={<CheckIn />} />

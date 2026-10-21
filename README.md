@@ -36,11 +36,11 @@ is never committed.
 
 ## Current state
 
-Phases 1–3 complete (Gate 1, Gate 2 and Gate 3 approved). Phase 4 (SOS and
-incident response) is implemented and externally verified — server-allocated case
-references, role-checked status transitions, retained history, response notes and a
-documented manual fallback (migrations 0001–0013). Gate 4 evidence is in
-`docs/GATE4_EVIDENCE.md`. See `docs/DEVELOPMENT_LOG.md` for the per-task record.
+Phases 1–4 complete (Gate 1, Gate 2, Gate 3 and Gate 4 approved). Phase 5
+(role-filtered dashboard) is implemented and externally verified — students see
+only their own data, teachers get school counts, administrators get user and audit
+counts (migrations 0001–0014). Gate 5 evidence is in `docs/GATE5_EVIDENCE.md`.
+See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 
 ## Documentation
 
@@ -50,6 +50,7 @@ documented manual fallback (migrations 0001–0013). Gate 4 evidence is in
 - `docs/GATE2_EVIDENCE.md` — Gate 2 evidence pack
 - `docs/GATE3_EVIDENCE.md` — Gate 3 evidence pack
 - `docs/GATE4_EVIDENCE.md` — Gate 4 evidence pack
+- `docs/GATE5_EVIDENCE.md` — Gate 5 evidence pack
 - `docs/MANUAL_FALLBACK.md` — manual fallback and response responsibilities
 - `docs/FIRST_ADMIN.md` — first administrator provisioning
 - `AGENTS.md` — project rules for contributors

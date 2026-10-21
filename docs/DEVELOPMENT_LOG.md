@@ -62,6 +62,21 @@ have no update or delete rights on incidents, history or notes; a 5-minute
 duplicate guard per person; cancellation by the creator or an administrator with
 the history preserved.
 
+## Phase 5 — Dashboard and reporting (complete, Gate 5 pending review)
+
+| Task | Commit | Files | Tests | Status |
+|---|---|---|---|---|
+| 5.1 | *pending* | Migration 0014 (`dashboard_counts()` — role-filtered aggregates, counts only) | verify-rls §15 | done |
+| 5.2 | *pending* | `src/features/dashboard/Dashboard.tsx` + tests, `/dashboard` route, `.dash-*` CSS | 7 unit tests | done |
+| 5.3 | *pending* | verify-rls §15 (8 dashboard checks), `docs/GATE5_EVIDENCE.md`, ARCHITECTURE/ROLLBACK updates | verify-rls 170/170, 85 unit tests | done — **awaiting Gate 5 review** |
+
+Dashboard model (migration 0014): `dashboard_counts()` returns numbers only —
+students get their own counts and no school-level keys, teachers add school
+counts, administrators add user and audit counts. The UI gates the school section
+on the client-side role, so a mis-scoped response still cannot show a student
+school-wide numbers. Published alerts and the weather advisory are shown as "not
+available yet" rather than faked.
+
 Implemented report model (migrations 0007–0008): any authenticated member files a
 report for their own school as themselves; a report is readable by its reporter and
 by responder/administrator reviewers only; reviewers move status through

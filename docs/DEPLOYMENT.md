@@ -17,8 +17,9 @@ the browser.
 | Item | Value |
 |---|---|
 | Live URL (stable) | **https://sentinel-app-1jo.pages.dev** |
-| Deployment URL (Phase 5 build) | https://606ad0ac.sentinel-app-1jo.pages.dev |
-| Previous deployment (Phase 4) | https://b92071f4.sentinel-app-1jo.pages.dev |
+| Deployment URL (Phase 6 build) | https://08258527.sentinel-app-1jo.pages.dev |
+| Previous deployment (Phase 5) | https://606ad0ac.sentinel-app-1jo.pages.dev |
+| Weather worker | **https://sentinel-weather.sentinelcshs.workers.dev** (separate Worker project, holds the service-role secret) |
 | Cloudflare account | `62991ae0c53627eb96f1207463435b3f` — "Sentinelcshs@gmail.com's Account" |
 | Pages project | `sentinel-app` (production branch `main`) |
 | Deployed commit | `b8b4caa` |
@@ -151,15 +152,31 @@ Pilot-only options to consider before the school pilot:
 - **Schema changes are never rolled back automatically** — a migration rollback
   needs explicit approval (it can destroy records).
 
-## 8. Workers (server-side) — later, Phase 6
+## 8. Workers (server-side) — Phase 6, implemented
 
-When the weather module lands, create a **separate** Cloudflare Worker project:
+The weather service runs as a **separate Cloudflare Worker** (`sentinel-weather`),
+so the service-role secret never reaches the browser bundle:
 
-- `wrangler.toml` in a `worker/` directory with its own `main` and
-  `compatibility_date`;
-- secrets via `wrangler secret put SUPABASE_SERVICE_ROLE_KEY` and
-  `wrangler secret put WEATHER_API_KEY` (never in code or in the Pages build);
-- the Worker fetches weather and returns a computed advisory with source,
-  timestamp, units, freshness and `rule_version`;
-- the browser only ever calls the Worker — never Supabase with a service-role
-  key, and never a third-party weather API directly.
+- `worker/index.ts` — fetches the observation from Open-Meteo, computes the heat
+  index with the shared module (`src/features/weather/heatIndex.ts`), stamps
+  source/timestamps/units/freshness/rule version, stores the observation and
+  serves the advisory;
+- `worker/wrangler.toml` — worker configuration; the school coordinates
+  (`LATITUDE`, `LONGITUDE`, `LOCATION_LABEL`) are **placeholders** until the real
+  location is configured;
+- secrets: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set with
+  `npx wrangler secret put` (never in the repository);
+- the app reaches the worker through the public `VITE_WEATHER_WORKER_URL` build
+  variable; the worker only allows the app's origin via `ALLOWED_ORIGIN`.
+
+```powershell
+# redeploy the worker after a code change
+npx wrangler deploy --config worker/wrangler.toml
+
+# rotate the service-role secret
+Get-Content <file-with-key> | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config worker/wrangler.toml
+```
+
+The worker is type-checked with strict settings through `tsconfig.worker.json`,
+which `npm run typecheck` includes.
+

@@ -41,6 +41,37 @@ drop table if exists public.buildings;
 -- Note: dropping buildings also removes profiles.building_id references first
 ```
 
+For `20261021000003_locations_schools.sql` + `...0004` + `...0005` (Phase 2 locations):
+
+```sql
+-- Rollback Phase 2 locations/multi-school (run only if explicitly approved)
+-- WARNING: loses locations, categories, school scoping, and profiles.school_id.
+drop trigger if exists locations_audit on public.locations;
+drop trigger if exists categories_audit on public.location_categories;
+drop trigger if exists schools_audit on public.schools;
+drop trigger if exists locations_validate on public.locations;
+drop trigger if exists locations_no_school_reassign on public.locations;
+drop trigger if exists categories_no_school_reassign on public.location_categories;
+drop trigger if exists locations_set_updated_at on public.locations;
+drop trigger if exists categories_set_updated_at on public.location_categories;
+drop trigger if exists schools_set_updated_at on public.schools;
+drop function if exists public.validate_location();
+drop function if exists public.prevent_school_reassign();
+drop function if exists public.audit_school_structure();
+drop function if exists public.set_updated_at();
+drop function if exists public.my_school_id();
+drop policy if exists profiles_select_admin on public.profiles;
+drop policy if exists audit_logs_select_admin on public.audit_logs;
+alter table public.profiles drop column if exists primary_location_id;
+alter table public.profiles drop column if exists school_id;
+drop table if exists public.locations;
+drop table if exists public.location_categories;
+drop table if exists public.schools;
+
+-- Then re-apply 0002 to restore buildings/floors/rooms if needed:
+-- (re-run supabase migration 20261021000002_school_structure.sql)
+```
+
 ### Option B: Point-in-time Restore
 
 If the project plan supports PITR:

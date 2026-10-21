@@ -153,21 +153,30 @@ If Cloudflare Functions add complexity, weather fetch can be a Supabase Edge Fun
 ### 4.1 ER Overview
 
 ```
+schools 1──* profiles
+schools 1──* location_categories
+schools 1──* locations (self-hierarchy)
+
 profiles 1──1 auth.users
 profiles *──* app_role (via profiles.role)
+profiles *──0..1 locations (primary_location_id, optional)
 
-buildings 1──* floors 1──* rooms
-rooms 1──* schedules *──1 profiles (user)
+locations 1──* locations (parent_id, optional; indoor + outdoor + custom)
+locations *──1 location_categories
+
+schedules *──1 profiles (user)
+schedules *──1 locations
 
 check_ins *──1 profiles
-check_ins *──1 rooms (optional)
+check_ins *──1 locations (optional)
 
 hazard_reports *──1 profiles (reporter)
-hazard_reports *──1 rooms (optional)
+hazard_reports *──1 locations (optional)
 report_attachments *──1 hazard_reports  → storage bucket: report-photos (private)
 
 incidents *──1 profiles (creator)
 incidents *──1 profiles (acknowledged_by, assigned_to nullable)
+incidents *──1 locations (optional, where recorded)
 incident_status_history *──1 incidents
 incident_notes *──1 incidents *──1 profiles
 
@@ -179,33 +188,56 @@ weather_observations (singleton or time-series cache)
 audit_logs (append-only; actor, action, entity, before/after JSONB)
 ```
 
+**Migration note (Phase 2, approved):** the interim `buildings`/`floors`/`rooms`
+tables from migration 0002 were replaced by the unified `locations` hierarchy
+(migration 0003) after their row counts were verified as zero. Locations are
+school-scoped and archive-only (no client deletes).
+
 ### 4.2 Key Tables (summary)
 
 | Table | Key Columns | RLS |
 |---|---|---|
-| `profiles` | id (=auth.uid), role, display_name, building_id | User reads own; admin reads all |
-| `buildings` | id, name | All authenticated read; admin write |
-| `floors` | id, building_id, label | Same |
-| `rooms` | id, floor_id, code, name | Same |
-| `schedules` | id, profile_id, room_id, valid_from, valid_to, day_of_week | User own; staff building |
-| `check_ins` | id, profile_id, room_id, location_source, checked_in_at, period | User own write/read; responder building read |
-| `hazard_reports` | id, reporter_id, category, description, room_id, status | Reporter + responder/admin |
+| `schools` | id, name, status | Own school read; admin update own; provisioned via SQL/dashboard |
+| `profiles` | id (=auth.uid), role, display_name, school_id, primary_location_id | User reads own; admin reads own-school only |
+| `location_categories` | id, school_id, name (unique/school, ci), environment, is_active | Own-school read; admin insert/update; no delete (deactivate) |
+| `locations` | id, school_id, parent_id (optional self-FK), category_id, name, code, environment, status, access_level | Own-school read; admin insert/update; **no client delete (archive-only)** |
+| `schedules` | id, profile_id, location_id, valid_from, valid_to, day_of_week | User own; staff building |
+| `check_ins` | id, profile_id, location_id, location_source, checked_in_at, period | User own write/read; responder building read |
+| `hazard_reports` | id, reporter_id, category, description, location_id, status | Reporter + responder/admin |
 | `report_attachments` | id, report_id, storage_path | Via report RLS + storage policy |
 | `incidents` | id, case_ref UNIQUE, status, created_by, assigned_to | Creator + responder/admin |
 | `incident_status_history` | id, incident_id, from_status, to_status, actor_id | Same as incident |
 | `incident_notes` | id, incident_id, author_id, body | Same |
 | `alerts` | id, status (draft/approved/published/cancelled), content, target_role, target_building_id | Draft: author+admin; Published: all authenticated |
 | `weather_observations` | id, source, observed_at, temp_c, humidity_pct, fetched_at, is_stale | Authenticated read; server write |
-| `audit_logs` | id, actor_id, action, entity_type, entity_id, payload JSONB, created_at | Admin read; insert via trigger/RPC only |
+| `audit_logs` | id, actor_id, action, entity_type, entity_id, payload JSONB, created_at | Admin (own-school actors); insert via trigger/RPC only |
 
-### 4.3 Enums
+**Locations server-side validation** (trigger `validate_location`): same-school
+parent (never archived when attaching), no self-parent, no cycles, depth ≤ 100,
+category must match school/environment, case-insensitive sibling-name uniqueness
+(among non-archived), code uniqueness per school (non-archived). `school_id` is
+immutable (trigger). Historical FK references survive renames/archival because
+records store location UUIDs.
+
+### 4.3 Enums / status values (check constraints)
 
 - `app_role`: student, teacher_staff, responder, administrator, (system_operator)
+- `schools.status` / `locations.status`: active, inactive, archived
+- `locations.environment`: indoor, outdoor, covered
+- `locations.access_level`: public, staff, restricted
+- `location_categories.environment`: indoor, outdoor, either
 - `incident_status`: new, acknowledged, assigned, in_progress, resolved, closed, cancelled
 - `report_status`: submitted, under_review, resolved, dismissed
 - `location_source`: self_selected, schedule_derived, staff_verified
 - `alert_status`: draft, approved, published, corrected, cancelled
 - `report_category`: hazard, maintenance, health, security, other
+
+**Multi-school isolation (Phase 2):** every scoping table carries `school_id`;
+RLS predicates compare against `my_school_id()` (security-definer helper).
+Current pilot = single seeded school (`SENTINEL Test School`, fixed id
+`11111111-1111-1111-1111-111111111111`); additional schools are provisioned
+via SQL/dashboard only. Cross-school reads, writes, reassignment, and audit
+visibility are tested in `scripts/verify-rls.mjs` §9.
 
 ---
 

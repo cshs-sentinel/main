@@ -1,6 +1,7 @@
-// RLS verification for SENTINEL identity migration.
+// RLS verification for SENTINEL identity, locations, and multi-school migrations.
 // Uses existing test users created in the dashboard.
 // Run: node scripts/verify-rls.mjs
+// Set SUPABASE_ACCESS_TOKEN to include multi-school (section 9) checks.
 
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
@@ -131,90 +132,253 @@ async function main() {
     .eq('action', 'role_changed')
   log('Audit rows for role changes', (auditRows?.length ?? 0) >= 2, `rows=${auditRows?.length}`)
 
-  // 8. School structure RLS
-  console.log('\n8. School structure (buildings/floors/rooms)');
-  const { data: anonBldg } = await admin.from('buildings').select('*')
-  log('Anon blocked from buildings', (anonBldg?.length ?? 0) === 0, `rows=${anonBldg?.length ?? 0}`)
-  const { data: anonRoom } = await admin.from('rooms').select('*')
-  log('Anon blocked from rooms', (anonRoom?.length ?? 0) === 0, `rows=${anonRoom?.length ?? 0}`)
+  // 8. Locations module (unified, school-configurable)
+  console.log('\n8. Locations module');
+  const A = '11111111-1111-1111-1111-111111111111'
+  const B = '22222222-2222-2222-2222-222222222222'
 
-  const { data: sBldgRead, error: sBldgReadErr } = await studentClient.from('buildings').select('id')
-  log('Student can read buildings', !sBldgReadErr, sBldgReadErr?.message ?? `rows=${sBldgRead?.length}`)
+  const { data: anonLoc } = await admin.from('locations').select('*')
+  log('Anon blocked from locations', (anonLoc?.length ?? 0) === 0, `rows=${anonLoc?.length ?? 0}`)
+  const { data: anonCat } = await admin.from('location_categories').select('*')
+  log('Anon blocked from location_categories', (anonCat?.length ?? 0) === 0, `rows=${anonCat?.length ?? 0}`)
+  const { data: anonSch } = await admin.from('schools').select('*')
+  log('Anon blocked from schools', (anonSch?.length ?? 0) === 0, `rows=${anonSch?.length ?? 0}`)
 
-  const { error: sBldgInsert } = await studentClient
-    .from('buildings')
-    .insert({ name: 'RLS-Should-Fail' })
-  log('Student insert denied', !!sBldgInsert, sBldgInsert?.message ?? 'no error?')
+  const { data: sCats, error: sCatsErr } = await studentClient.from('location_categories').select('id, name')
+  log('Student reads own-school categories', !sCatsErr && (sCats?.length ?? 0) >= 20, `rows=${sCats?.length ?? 0}`)
+  const { data: sSch } = await studentClient.from('schools').select('id')
+  log('Student reads exactly own school', (sSch?.length ?? 0) === 1 && sSch[0]?.id === A, `rows=${sSch?.length ?? 0}`)
+  const { data: sOwnProfile } = await studentClient.from('profiles').select('school_id').eq('id', STUDENT_ID).single()
+  log('Student profile scoped to default school', sOwnProfile?.school_id === A, `school=${sOwnProfile?.school_id}`)
 
-  const { error: sRoomInsert } = await studentClient
-    .from('rooms')
-    .insert({ floor_id: '00000000-0000-0000-0000-000000000000', code: 'X', name: 'X' })
-  log('Student room insert denied', !!sRoomInsert, sRoomInsert?.message ?? 'no error?')
+  const { error: sLocInsert } = await studentClient.from('locations').insert({
+    school_id: A, name: 'RLS Student Should Fail', category_id: sCats?.[0]?.id, environment: 'indoor',
+  })
+  log('Student location insert denied', !!sLocInsert, sLocInsert?.message ?? 'no error?')
 
-  // Admin full CRUD on a synthetic building
-  const { data: created, error: aCreateErr } = await adminClient
-    .from('buildings')
-    .insert({ name: 'RLS-Test-Building' })
-    .select('id, name')
-    .single()
-  log('Admin creates building', !aCreateErr && created?.name === 'RLS-Test-Building',
-    aCreateErr?.message ?? '')
+  const { data: cats, error: catErr } = await adminClient
+    .from('location_categories').select('id, name, environment')
+  log('Admin reads categories', !catErr && (cats?.length ?? 0) >= 20, `rows=${cats?.length ?? 0}`)
+  const catId = (n) => cats.find((c) => c.name === n)?.id
 
-  if (created) {
-    const { data: updated, error: aUpdErr } = await adminClient
-      .from('buildings')
-      .update({ name: 'RLS-Test-Building-Renamed' })
-      .eq('id', created.id)
-      .select('name')
-      .single()
-    log('Admin updates building', !aUpdErr && updated?.name === 'RLS-Test-Building-Renamed',
-      aUpdErr?.message ?? '')
+  const TEST_LOCATION_NAMES = ['Test Campus', 'Test Main Building', 'Test Floor 2', 'RLS Room 204',
+    'RLS Room 205', 'RLS School Garden', 'RLS Misplaced', 'RLS Under Archived',
+    'RLS Robotics Room', 'RLS Inactive Cat Room', 'RLS Student Should Fail', 'rls room 204']
 
-    const { data: sUpdRes, error: sUpdErr } = await studentClient
-      .from('buildings')
-      .update({ name: 'Hijacked' })
-      .eq('id', created.id)
-      .select('id, name')
-    log('Student update blocked', !sUpdErr && (sUpdRes?.length ?? 0) === 0,
-      sUpdErr?.message ?? `rows=${sUpdRes?.length}`)
+  // Pre-clean: archive leftovers from a failed prior run (synthetic test names only)
+  await adminClient.from('locations')
+    .update({ status: 'archived' })
+    .eq('status', 'active')
+    .in('name', TEST_LOCATION_NAMES)
 
-    const { data: sDelRes, error: sDelErr } = await studentClient
-      .from('buildings')
-      .delete()
-      .eq('id', created.id)
-      .select('id')
-    log('Student delete blocked', !sDelErr && (sDelRes?.length ?? 0) === 0,
-      sDelErr?.message ?? `rows=${sDelRes?.length}`)
-
-    // Row must be intact after student attempts
-    const { data: intact } = await adminClient
-      .from('buildings')
-      .select('name')
-      .eq('id', created.id)
-      .single()
-    log('Building intact after student attempts',
-      intact?.name === 'RLS-Test-Building-Renamed', `name=${intact?.name ?? 'missing'}`)
-
-    const { error: aDelErr } = await adminClient
-      .from('buildings')
-      .delete()
-      .eq('id', created.id)
-    log('Admin deletes building', !aDelErr, aDelErr?.message ?? '')
-  } else {
-    log('Admin updates building', false, 'create failed, skipping')
-    log('Student update blocked', false, 'create failed, skipping')
-    log('Student delete blocked', false, 'create failed, skipping')
-    log('Building intact after student attempts', false, 'create failed, skipping')
-    log('Admin deletes building', false, 'create failed, skipping')
+  const mkLoc = async (fields) => {
+    const { data, error } = await adminClient.from('locations').insert(fields).select('id, name').single()
+    return { data, error }
   }
 
-  const { data: structAudit } = await adminClient
-    .from('audit_logs')
-    .select('action, entity_type')
-    .eq('entity_type', 'buildings')
-  const actions = new Set((structAudit ?? []).map((r) => r.action))
-  log('Structure changes audited', actions.has('create') && actions.has('delete'),
-    `actions=${[...actions].join(',')}`)
+  const campus = await mkLoc({ school_id: A, name: 'Test Campus', category_id: catId('Open Space'), environment: 'outdoor' })
+  log('Admin creates top-level outdoor location', !campus.error, campus.error?.message ?? '')
+  const bldg = campus.data
+    ? await mkLoc({ school_id: A, parent_id: campus.data.id, name: 'Test Main Building', category_id: catId('Building'), environment: 'indoor' })
+    : { error: new Error('campus failed, skipping') }
+  log('Admin creates building under campus', !bldg.error, bldg.error?.message ?? '')
+  const floor = bldg.data
+    ? await mkLoc({ school_id: A, parent_id: bldg.data.id, name: 'Test Floor 2', category_id: catId('Floor'), environment: 'indoor' })
+    : { error: new Error('building failed, skipping') }
+  log('Admin creates floor under building', !floor.error, floor.error?.message ?? '')
+  const room = floor.data
+    ? await mkLoc({ school_id: A, parent_id: floor.data.id, name: 'RLS Room 204', code: 'RLS-204', category_id: catId('Room'), environment: 'indoor' })
+    : { error: new Error('floor failed, skipping') }
+  log('Admin creates room with code', !room.error, room.error?.message ?? '')
+  const garden = campus.data
+    ? await mkLoc({ school_id: A, parent_id: campus.data.id, name: 'RLS School Garden', category_id: catId('Garden'), environment: 'outdoor' })
+    : { error: new Error('campus failed, skipping') }
+  log('Outdoor location without building/floor/code', !garden.error, garden.error?.message ?? '')
+
+  if (room.data && floor.data && bldg.data) {
+    const dupName = await adminClient.from('locations').insert({
+      school_id: A, parent_id: floor.data.id, name: 'rls room 204', category_id: catId('Room'), environment: 'indoor',
+    })
+    log('Duplicate sibling name rejected (case-insensitive)', !!dupName.error && /already exists/i.test(dupName.error.message),
+      dupName.error?.message ?? 'no error?')
+
+    const dupCode = await adminClient.from('locations').insert({
+      school_id: A, parent_id: bldg.data.id, name: 'RLS Room 205', code: 'RLS-204', category_id: catId('Room'), environment: 'indoor',
+    })
+    log('Duplicate code rejected', !!dupCode.error && /already used/i.test(dupCode.error.message),
+      dupCode.error?.message ?? 'no error?')
+
+    const selfP = await adminClient.from('locations').update({ parent_id: room.data.id }).eq('id', room.data.id)
+    log('Self-parent rejected', !!selfP.error && /own parent/i.test(selfP.error.message),
+      selfP.error?.message ?? 'no error?')
+
+    const cyc = await adminClient.from('locations').update({ parent_id: room.data.id }).eq('id', bldg.data.id)
+    log('Parent cycle rejected', !!cyc.error && /cycle/i.test(cyc.error.message),
+      cyc.error?.message ?? 'no error?')
+
+    const envMis = await adminClient.from('locations').insert({
+      school_id: A, parent_id: floor.data.id, name: 'RLS Misplaced', category_id: catId('Room'), environment: 'outdoor',
+    })
+    log('Environment/category mismatch rejected', !!envMis.error && /may not label/i.test(envMis.error.message),
+      envMis.error?.message ?? 'no error?')
+
+    const archFloor = await adminClient.from('locations').update({ status: 'archived' }).eq('id', floor.data.id).select('status')
+    log('Admin archives floor', archFloor.data?.[0]?.status === 'archived', archFloor.error?.message ?? '')
+
+    const underArch = await adminClient.from('locations').insert({
+      school_id: A, parent_id: floor.data.id, name: 'RLS Under Archived', category_id: catId('Room'), environment: 'indoor',
+    })
+    log('New child under archived parent rejected', !!underArch.error && /archived parent/i.test(underArch.error.message),
+      underArch.error?.message ?? 'no error?')
+
+    const archChild = await adminClient.from('locations').update({ status: 'archived' }).eq('id', room.data.id).select('id')
+    log('Child archivable under archived parent (0004 fix)', !archChild.error && (archChild.data?.length ?? 0) === 1,
+      archChild.error?.message ?? '')
+
+    const freeName = await adminClient.from('locations').insert({
+      school_id: A, parent_id: bldg.data.id, name: 'Test Floor 2', category_id: catId('Floor'), environment: 'indoor',
+    })
+    log('Archived name freed for reuse', !freeName.error, freeName.error?.message ?? '')
+
+    const reassign = await adminClient.from('locations').update({ school_id: B }).eq('id', room.data.id)
+    log('School reassignment rejected', !!reassign.error && /school reassignment/i.test(reassign.error.message),
+      reassign.error?.message ?? 'no error?')
+
+    const sUpd = await studentClient.from('locations').update({ name: 'Hijacked' }).eq('id', bldg.data.id).select('id')
+    log('Student update blocked', !sUpd.error && (sUpd.data?.length ?? 0) === 0,
+      sUpd.error?.message ?? `rows=${sUpd.data?.length}`)
+
+    const sDel = await studentClient.from('locations').delete().eq('id', bldg.data.id).select('id')
+    log('Student delete blocked (0 rows)', !sDel.error && (sDel.data?.length ?? 0) === 0,
+      sDel.error?.message ?? `rows=${sDel.data?.length}`)
+
+    const aDel = await adminClient.from('locations').delete().eq('id', bldg.data.id).select('id')
+    log('Admin delete blocked — archive only', !aDel.error && (aDel.data?.length ?? 0) === 0,
+      aDel.error?.message ?? `rows=${aDel.data?.length}`)
+
+    const intact = await adminClient.from('locations').select('name').eq('id', bldg.data.id).single()
+    log('Location intact after delete attempts', intact.data?.name === 'Test Main Building',
+      `name=${intact.data?.name ?? 'missing'}`)
+
+    // Cleanup: archive all active test-named locations (any order — 0004 fix allows it)
+    await adminClient.from('locations')
+      .update({ status: 'archived' })
+      .eq('status', 'active')
+      .in('name', TEST_LOCATION_NAMES)
+    const left = await adminClient.from('locations')
+      .select('id').eq('status', 'active').in('name', TEST_LOCATION_NAMES)
+    log('Cleanup archived all active test locations', (left.data ?? []).length === 0,
+      `active=${left.data?.length}`)
+  } else {
+    log('Location hierarchy and validation checks', false, 'setup failed, skipping')
+  }
+
+  // Custom category lifecycle
+  let mkCat = await adminClient.from('location_categories')
+    .insert({ school_id: A, name: 'RLS Robotics Lab', environment: 'indoor' })
+    .select('id').single()
+  if (mkCat.error) {
+    const { data: exist } = await adminClient.from('location_categories')
+      .select('id').eq('school_id', A).eq('name', 'RLS Robotics Lab').maybeSingle()
+    if (exist) {
+      await adminClient.from('location_categories').update({ is_active: true }).eq('id', exist.id)
+      mkCat = { data: exist, error: null }
+    }
+  }
+  log('Admin creates custom category', !mkCat.error, mkCat.error?.message ?? '')
+
+  if (mkCat.data) {
+    const useCat = await mkLoc({ school_id: A, name: 'RLS Robotics Room', category_id: mkCat.data.id, environment: 'indoor' })
+    log('Location uses custom category', !useCat.error, useCat.error?.message ?? '')
+
+    await adminClient.from('location_categories').update({ is_active: false }).eq('id', mkCat.data.id)
+    const inactiveUse = await adminClient.from('locations').insert({
+      school_id: A, name: 'RLS Inactive Cat Room', category_id: mkCat.data.id, environment: 'indoor',
+    })
+    log('Inactive category rejected', !!inactiveUse.error && /inactive/i.test(inactiveUse.error.message),
+      inactiveUse.error?.message ?? 'no error?')
+    await adminClient.from('location_categories').update({ is_active: true }).eq('id', mkCat.data.id)
+
+    if (useCat.data) {
+      await adminClient.from('locations').update({ status: 'archived' }).eq('id', useCat.data.id)
+    }
+  }
+
+  const sCatIns = await studentClient.from('location_categories').insert({ school_id: A, name: 'RLS Student Cat' })
+  log('Student category insert denied', !!sCatIns.error, sCatIns.error?.message ?? 'no error?')
+
+  const locAudit = await adminClient.from('audit_logs').select('action, entity_type').eq('entity_type', 'locations')
+  const locActions = new Set((locAudit.data ?? []).map((r) => r.action))
+  log('Location changes audited', locActions.has('create') && locActions.has('update'),
+    `actions=${[...locActions].join(',')}`)
+
+  // 9. Multi-school isolation (requires SUPABASE_ACCESS_TOKEN for SQL setup/cleanup)
+  console.log('\n9. Multi-school isolation');
+  const token = process.env.SUPABASE_ACCESS_TOKEN
+  const projectRef = new URL(url).hostname.split('.')[0]
+  async function sql(query) {
+    const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(body.message ?? `SQL API ${res.status}`)
+    return Array.isArray(body) ? body : []
+  }
+  async function cleanupSchoolB() {
+    await sql(`delete from public.audit_logs where entity_id = '${B}'
+      or entity_id in (select id::text from public.locations where school_id = '${B}')
+      or entity_id in (select id::text from public.location_categories where school_id = '${B}')`)
+    await sql(`delete from public.locations where school_id = '${B}'`)
+    await sql(`delete from public.location_categories where school_id = '${B}'`)
+    await sql(`delete from public.schools where id = '${B}'`)
+  }
+
+  if (!token) {
+    log('Multi-school checks', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
+  } else {
+    try {
+      await cleanupSchoolB()
+      await sql(`insert into public.schools (id, name) values ('${B}', 'RLS Other School')`)
+      await sql(`insert into public.location_categories (school_id, name, environment) values ('${B}', 'Building', 'indoor')`)
+      const [catB] = await sql(`select id from public.location_categories where school_id = '${B}' and name = 'Building'`)
+      const [locB] = await sql(`insert into public.locations (school_id, name, category_id, environment)
+        values ('${B}', 'RLS Hidden Other School Building', '${catB.id}', 'indoor') returning id`)
+      const locBId = locB.id
+
+      const { data: aLocs } = await adminClient.from('locations').select('id')
+      log('Admin A cannot read school B locations', !(aLocs ?? []).some((r) => r.id === locBId))
+      const { data: sLocs2 } = await studentClient.from('locations').select('id')
+      log('Student A cannot read school B locations', !(sLocs2 ?? []).some((r) => r.id === locBId))
+
+      const { data: updRes } = await adminClient.from('locations')
+        .update({ name: 'Hijacked B' }).eq('id', locBId).select('id')
+      log('Admin A update on school B blocked', (updRes?.length ?? 0) === 0, `rows=${updRes?.length}`)
+
+      const { error: xInsert } = await adminClient.from('locations').insert({
+        school_id: B, name: 'RLS Cross School', category_id: catB.id, environment: 'indoor',
+      })
+      log('Admin A cross-school insert denied', !!xInsert && /row-level security/i.test(xInsert.message ?? ''),
+        xInsert?.message ?? 'no error?')
+
+      const { data: aAudit2 } = await adminClient.from('audit_logs').select('entity_id')
+      log('School B audit rows hidden from admin A',
+        !(aAudit2 ?? []).some((r) => r.entity_id === locBId || r.entity_id === B))
+
+      const { data: aProfiles } = await adminClient.from('profiles').select('id, school_id')
+      log('Admin A profiles limited to own school',
+        (aProfiles ?? []).length >= 2 && (aProfiles ?? []).every((p) => p.school_id === A),
+        `rows=${aProfiles?.length}`)
+
+      await cleanupSchoolB()
+      const after = await sql(`select id from public.schools where id = '${B}'`)
+      log('School B cleanup complete', after.length === 0)
+    } catch (e) {
+      log('Multi-school checks', false, e.message)
+      try { await cleanupSchoolB() } catch { /* best effort */ }
+    }
+  }
 
   finish()
 }

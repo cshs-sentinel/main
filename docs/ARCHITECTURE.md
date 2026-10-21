@@ -54,6 +54,11 @@
 - Role changes occur only via `admin` RPC, with audit log.
 - `service_role` key never leaves server; used only in Cloudflare Functions or Supabase Edge Functions.
 - Students cannot read other students' check-ins, schedules, or reports.
+  - *Implemented (Phase 2–3):* schedules are school-scoped plan data readable by all
+    roles in the school (no person-level schedule rows exist, so no learner data is
+    exposed); hazard reports are readable **only by the reporter and by
+    responder/administrator reviewers** of the same school (migration 0008);
+    check-ins do not exist yet.
 - Responders see only incidents assigned to them or their building scope.
 
 ### 1.2 Permission Matrix (abbreviated)
@@ -79,6 +84,18 @@
 
 Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 
+**Implementation status (2026-10-21):**
+
+| Area | Status |
+|---|---|
+| Roles, profiles, audit log, admin RPC | Implemented (migrations 0001) |
+| Schools, locations, categories, multi-school isolation | Implemented (0003–0005) |
+| Schedules (own-school read for all roles) | Implemented (0006) |
+| Hazard reports: file as self, reporter + reviewer read, reviewer status transitions, no client delete | Implemented (0007, read scope narrowed in 0008) |
+| Report photo upload (private bucket) | Planned (Phase 3, next) |
+| Check-ins | Planned |
+| SOS / incidents, alerts, weather, dashboard | Planned (later phases) |
+
 ---
 
 ## 2. Frontend Pages and Navigation
@@ -87,24 +104,29 @@ Full matrix to be encoded in RLS policies (Phase 1–2 migrations).
 
 ### 2.1 Route Map
 
-| Route | Page | Guard | Role(s) |
-|---|---|---|---|
-| `/login` | Sign in | Public | — |
-| `/signup` | Sign up | Public | — |
-| `/` | Redirect by role | Auth | All |
-| `/check-in` | Check-in button + history | Auth | student, teacher_staff, responder, admin |
-| `/schedule` | Own schedule | Auth | All |
-| `/reports/new` | Hazard report form | Auth | All |
-| `/reports/:id` | Report detail | Auth | Reporter + responder + admin |
-| `/sos` | SOS trigger + case ref | Auth | All |
-| `/incidents` | Incident list (role-filtered) | Auth + role | responder, admin |
-| `/incidents/:ref` | Incident detail + timeline | Auth + role | responder, admin |
-| `/dashboard` | Role-specific dashboard | Auth + role | All (variant) |
-| `/admin/users` | User management | Auth | administrator |
-| `/admin/structure` | Locations CRUD | Auth | administrator |
-| `/admin/schedules` | Schedule management | Auth | administrator |
-| `/alerts` | Alert feed | Auth | All |
-| `/admin/alerts/new` | Alert composer | Auth | responder (approver), admin |
+| Route | Page | Guard | Role(s) | Status |
+|---|---|---|---|---|
+| `/login` | Sign in | Public | — | Implemented |
+| `/signup` | Sign up | Public | — | Implemented |
+| `/` | Home + role links | Auth | All | Implemented |
+| `/check-in` | Check-in button + history | Auth | student, teacher_staff, responder, admin | Planned |
+| `/schedule` | Own schedule | Auth | All | Implemented |
+| `/reports` | Hazard report form + own reports | Auth | All | Planned (Phase 3) |
+| `/admin/reports` | Report review queue | Auth | responder, admin | Planned (Phase 3) |
+| `/sos` | SOS trigger + case ref | Auth | All | Planned (Phase 4) |
+| `/incidents` | Incident list (role-filtered) | Auth + role | responder, admin | Planned (Phase 4) |
+| `/incidents/:ref` | Incident detail + timeline | Auth + role | responder, admin | Planned (Phase 4) |
+| `/dashboard` | Role-specific dashboard | Auth + role | All (variant) | Planned (Phase 5) |
+| `/admin/users` | User management | Auth | administrator | Implemented |
+| `/admin/structure` | Locations CRUD | Auth | administrator | Implemented |
+| `/admin/schedules` | Schedule management | Auth | administrator | Implemented |
+| `/alerts` | Alert feed | Auth | All | Planned (Phase 7) |
+| `/admin/alerts/new` | Alert composer | Auth | responder (approver), admin | Planned (Phase 7) |
+
+> Route shapes for reports follow the approved Phase 3 plan: `/reports` combines the
+> submission form with the reporter's own list, and `/admin/reports` is the
+> responder/administrator review queue (the earlier `/reports/new` + `/reports/:id`
+> split is superseded).
 
 ### 2.2 Navigation Shell
 
@@ -112,7 +134,8 @@ Mobile-first bottom nav (student view): **Home | Check-In | SOS | Alerts | More*
 Staff/responder: adds **Reports | Incidents**
 Admin: adds **Admin**
 
-**[CONFIRMED]** Current `App.tsx` is Vite template only — will be replaced by router + shell.
+**[CONFIRMED]** The app is a Vite + React + TypeScript SPA with React Router route
+guards (`src/App.tsx`); implemented routes are listed in §2.1.
 
 ---
 
@@ -172,6 +195,7 @@ check_ins *──1 locations (optional)
 
 hazard_reports *──1 profiles (reporter)
 hazard_reports *──1 locations (optional)
+hazard_reports *──1 schools
 report_attachments *──1 hazard_reports  → storage bucket: report-photos (private)
 
 incidents *──1 profiles (creator)
@@ -188,6 +212,13 @@ weather_observations (singleton or time-series cache)
 audit_logs (append-only; actor, action, entity, before/after JSONB)
 ```
 
+**Implemented vs planned:** `profiles`, `audit_logs`, `schools`,
+`location_categories`, `locations`, `schedules`, and `hazard_reports` exist
+(migrations 0001–0008). `check_ins`, `report_attachments`, `incidents`,
+`incident_status_history`, `incident_notes`, `alerts`, `alert_targets`, and
+`weather_observations` are design targets from the original specification and
+are not built yet.
+
 **Migration note (Phase 2, approved):** the interim `buildings`/`floors`/`rooms`
 tables from migration 0002 were replaced by the unified `locations` hierarchy
 (migration 0003) after their row counts were verified as zero. Locations are
@@ -202,9 +233,9 @@ school-scoped and archive-only (no client deletes).
 | `location_categories` | id, school_id, name (unique/school, ci), environment, is_active | Own-school read; admin insert/update; no delete (deactivate) |
 | `locations` | id, school_id, parent_id (optional self-FK), category_id, name, code, environment, status, access_level | Own-school read; admin insert/update; **no client delete (archive-only)** |
 | `schedules` | id, school_id, location_id, day_of_week (0–6), start_time, end_time, effective_from, effective_until, label, status | Own-school read (all roles); admin insert/update; **no client delete (deactivate)** |
-| `check_ins` | id, profile_id, location_id, location_source, checked_in_at, period | User own write/read; responder building read |
-| `hazard_reports` | id, reporter_id, category, description, location_id, status | Reporter + responder/admin |
-| `report_attachments` | id, report_id, storage_path | Via report RLS + storage policy |
+| `check_ins` | id, profile_id, location_id, location_source, checked_in_at, period | *Planned* — user own write/read; responder building read |
+| `hazard_reports` | id, school_id, reporter_id, location_id (optional), category, description, status | Implemented: own-school scope + **reporter or reviewer reads**; any role files own-school as self; responder/admin update status; **no client delete (retained)** |
+| `report_attachments` | id, report_id, storage_path | *Planned* — via report RLS + storage policy |
 | `incidents` | id, case_ref UNIQUE, status, created_by, assigned_to | Creator + responder/admin |
 | `incident_status_history` | id, incident_id, from_status, to_status, actor_id | Same as incident |
 | `incident_notes` | id, incident_id, author_id, body | Same |
@@ -229,6 +260,25 @@ overlapping **active** times for the same location + weekday are rejected
 changes are audited. A schedule row records where someone is *expected* — it is
 never presented as verified occupancy.
 
+**Hazard reports server-side validation** (trigger `validate_hazard_report`,
+migration 0007): friendly messages for invalid category, description length
+(3–2000), and a report that tries to start in a non-`open` status; a report
+must be filed as the authenticated user (no filing on behalf of others); the
+optional location must exist, belong to the same school, and not be archived.
+After submission the report details are immutable, and status follows the
+workflow `open → acknowledged → resolved` (one-step undo allowed:
+`acknowledged → open`, `resolved → acknowledged`); any other transition is
+rejected. `school_id` is immutable (shared trigger); creations and status
+changes are audited. Reports are retained, not deleted.
+
+**Hazard report read scope** (migration 0008, narrowing 0007): school scoping
+is evaluated first, then role — a report is readable only by its **reporter** and
+by **responder/administrator reviewers** of the same school. Other members of
+the school (students, teachers) cannot read reports they did not file, which
+keeps reporter identity and report content off unauthorised screens. The
+"read all reports" permission therefore belongs to responders and
+administrators only, as §1.2 states.
+
 ### 4.3 Enums / status values (check constraints)
 
 - `app_role`: student, teacher_staff, responder, administrator, (system_operator)
@@ -238,11 +288,11 @@ never presented as verified occupancy.
 - `location_categories.environment`: indoor, outdoor, either
 - `schedules.status`: active, inactive
 - `schedules.day_of_week`: 0–6 (0 = Sunday, JS `Date.getDay()` convention)
-- `incident_status`: new, acknowledged, assigned, in_progress, resolved, closed, cancelled
-- `report_status`: submitted, under_review, resolved, dismissed
-- `location_source`: self_selected, schedule_derived, staff_verified
-- `alert_status`: draft, approved, published, corrected, cancelled
-- `report_category`: hazard, maintenance, health, security, other
+- `incident_status` *(planned)*: new, acknowledged, assigned, in_progress, resolved, closed, cancelled
+- `report_status` (implemented, migration 0007): open, acknowledged, resolved
+- `location_source` *(planned)*: self_selected, schedule_derived, staff_verified
+- `alert_status` *(planned)*: draft, approved, published, corrected, cancelled
+- `report_category` (implemented, migration 0007): facility_damage, safety_hazard, crowding, other
 
 **Multi-school isolation (Phase 2):** every scoping table carries `school_id`;
 RLS predicates compare against `my_school_id()` (security-definer helper).
@@ -258,20 +308,28 @@ visibility are tested in `scripts/verify-rls.mjs` §9.
 ### 5.1 Hazard Report Flow
 
 ```
-[User] ──submit──▶ INSERT hazard_reports (status=submitted)
+[User] ──submit──▶ INSERT hazard_reports (status=open)
                       │
                       ▼
               [Responder/Admin] review
                       │
           ┌───────────┼───────────┐
           ▼           ▼           ▼
-     under_review   resolved    dismissed
+   acknowledged    resolved   (one-step undo)
                       │
                       ▼
               audit_logs entry
 ```
 
 **Acceptance:** Reporter sees own reports; only responder/admin change status; photos in private bucket with signed-URL access scoped by policy.
+
+**Implemented (Phase 3, migration 0007):** the v1 vocabulary is
+`open → acknowledged → resolved` (undo: `acknowledged → open`,
+`resolved → acknowledged`); `under_review`/`dismissed` were folded into
+`acknowledged`/`resolved` to keep the transition set minimal and enforceable
+server-side. Any authenticated member of a school may file a report for that
+school as themselves; reports are read by own-school members, changed only by
+responder/administrator reviewers, and are never deleted by clients.
 
 ### 5.2 SOS / Incident Flow
 
@@ -371,6 +429,7 @@ Where T = dry-bulb temperature (°F), RH = relative humidity (%).
 | Incident status transitions | ✓ (via status_history; also audit_logs) |
 | Alert approve/publish/correct/cancel | ✓ |
 | Admin CRUD on school structure | ✓ |
+| Hazard report creation and status changes | ✓ (trigger `hazard_reports_audit`) |
 | User sign-in (auth logs handled by Supabase) | Supabase auth audit |
 
 ### 8.2 Retention (Proposed Defaults)
@@ -431,6 +490,7 @@ Documented in `docs/FIRST_ADMIN.md`:
 | Enums | Select-only UI | CHECK against enum |
 | File uploads | Type/size preview | MIME allowlist, size limit, scan (post-MVP) |
 | Numeric (weather) | — | Range checks before heat-index |
+| Hazard report | Category select, description 3–2000 | Trigger `validate_hazard_report`: category allowlist, length, reporter identity, location scope, status workflow |
 
 ### 10.3 Failure Modes to Handle
 
@@ -512,14 +572,20 @@ GitHub Actions: lint + test + build on PR. No deploy without manual gate.
 | Item | Status |
 |---|---|
 | Vite + React + TS + oxlint scaffold | **[CONFIRMED]** |
-| GitHub remote `BossG-Innovation2026/sentinel` | **[CONFIRMED]** |
-| New detached Supabase project | **[PROPOSED]** (user approved concept; project not created yet) |
-| Cloudflare Pages hosting | **[PROPOSED]** |
-| All schema, RLS, UI, workflows, tests | **[PROPOSED]** |
-| Open-Meteo as weather source | **[PROPOSED]** (confirm at Phase 7) |
+| GitHub remote `cshs-sentinel/main` (branch `main`) | **[CONFIRMED]** |
+| Supabase project `vuqjfigoeuvjieznqyil` (auth, Postgres, RLS) | **[CONFIRMED]** — in use; migrations 0001–0008 applied |
+| Cloudflare Pages hosting | **[PROPOSED]** — deploy only after the Phase 9 gate |
+| Schema/RLS for identity, structure, schedules, hazard reports | **[CONFIRMED]** (migrations 0001–0008) |
+| Check-ins, report photos, SOS/incidents, alerts, weather, dashboard | **[PROPOSED]** — later phases, not built |
+| Open-Meteo as weather source | **[PROPOSED]** (confirm at Phase 6) |
 
 ---
 
 ## Awaiting Approval
 
-This architecture document is **proposed**. Approval of this document (Gate Architecture) authorizes implementation starting with roadmap **Task 1.1** (secure scaffold + test harness). No schema is applied, no services are provisioned, and no feature code is written until then.
+This document was approved as the architecture baseline (Gate Architecture → Task 1.1
+scaffold) and is now the **living** specification: implemented sections are marked
+in §2.1, §4.2, §4.3 and §1.2, and each change is recorded in
+`docs/DEVELOPMENT_LOG.md`. No further implementation proceeds without a task
+plan approved per `AGENTS.md` §6, and no deployment or production change happens
+before the Phase 9 gate.

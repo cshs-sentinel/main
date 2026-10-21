@@ -1,7 +1,7 @@
-// RLS verification for SENTINEL identity, locations, schedules, and multi-school migrations.
+// RLS verification for SENTINEL identity, locations, schedules, hazard reports, and multi-school migrations.
 // Uses existing test users created in the dashboard.
 // Run: node scripts/verify-rls.mjs
-// Set SUPABASE_ACCESS_TOKEN to include multi-school (section 9) checks.
+// Set SUPABASE_ACCESS_TOKEN to include multi-school (section 9) and report-cleanup checks.
 
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
@@ -164,7 +164,7 @@ async function main() {
   const TEST_LOCATION_NAMES = ['Test Campus', 'Test Main Building', 'Test Floor 2', 'RLS Room 204',
     'RLS Room 205', 'RLS School Garden', 'RLS Misplaced', 'RLS Under Archived',
     'RLS Robotics Room', 'RLS Inactive Cat Room', 'RLS Student Should Fail', 'rls room 204',
-    'RLS Schedule Room']
+    'RLS Schedule Room', 'RLS Report Room']
 
   // Pre-clean: archive leftovers from a failed prior run (synthetic test names only)
   await adminClient.from('locations')
@@ -522,6 +522,233 @@ async function main() {
   const schedActions = new Set((schedAudit.data ?? []).map((r) => r.action))
   log('Schedule changes audited', schedActions.has('create') && schedActions.has('update'),
     `actions=${[...schedActions].join(',')}`)
+
+  // 11. Hazard reports (submission + reviewer workflow, no client delete)
+  console.log('\n11. Hazard reports');
+  const { data: anonRep } = await admin.from('hazard_reports').select('*')
+  log('Anon blocked from hazard_reports', (anonRep?.length ?? 0) === 0, `rows=${anonRep?.length ?? 0}`)
+
+  // Pre-clean: remove leftover synthetic reports from a failed prior run; archive leftover room
+  if (token) {
+    try { await sql(`delete from public.hazard_reports where description like 'RLS %'`) } catch { /* best effort */ }
+  }
+  await adminClient.from('locations')
+    .update({ status: 'archived' })
+    .eq('status', 'active')
+    .eq('name', 'RLS Report Room')
+
+  const repRoom = await mkLoc({
+    school_id: A, name: 'RLS Report Room', category_id: catId('Room'), environment: 'indoor',
+  })
+  log('Admin creates report room', !repRoom.error, repRoom.error?.message ?? '')
+
+  if (repRoom.data) {
+    const mkRep = (fields) =>
+      studentClient.from('hazard_reports').insert({ school_id: A, location_id: repRoom.data.id, ...fields })
+
+    const r1 = await mkRep({ category: 'safety_hazard', description: 'RLS Loose handrail by the science lab' })
+      .select('id').single()
+    log('Student files a hazard report', !r1.error && !!r1.data?.id, r1.error?.message ?? '')
+
+    const badCat = await mkRep({ category: 'weapon', description: 'RLS invalid category attempt' })
+    log('Invalid category rejected', !!badCat.error && /invalid report category/i.test(badCat.error.message),
+      badCat.error?.message ?? 'no error?')
+
+    const badDesc = await mkRep({ category: 'other', description: 'x' })
+    log('Short description rejected', !!badDesc.error && /between 3 and 2000/i.test(badDesc.error.message),
+      badDesc.error?.message ?? 'no error?')
+
+    const badStatus = await mkRep({ category: 'other', description: 'RLS status shortcut attempt', status: 'resolved' })
+    log('Pre-set status rejected', !!badStatus.error && /start as open/i.test(badStatus.error.message),
+      badStatus.error?.message ?? 'no error?')
+
+    const asOther = await studentClient.from('hazard_reports').insert({
+      school_id: A, reporter_id: ADMIN_ID, category: 'other', description: 'RLS filed as admin attempt',
+    })
+    log('Filing as another user rejected', !!asOther.error && /filed as yourself/i.test(asOther.error.message),
+      asOther.error?.message ?? 'no error?')
+
+    // Read scope: reporter + own-school reviewers only (ARCHITECTURE section 1.1/1.2)
+    const aReport = await adminClient.from('hazard_reports').insert({
+      school_id: A, category: 'other', description: 'RLS admin filed report',
+    }).select('id').single()
+    log('Admin files a report as themselves', !aReport.error && !!aReport.data?.id, aReport.error?.message ?? '')
+
+    const ownRead = r1.data
+      ? await studentClient.from('hazard_reports').select('id').eq('id', r1.data.id)
+      : { data: [] }
+    log('Reporter can read own report', (ownRead.data ?? []).length === 1, `rows=${ownRead.data?.length}`)
+
+    const otherRead = aReport.data
+      ? await studentClient.from('hazard_reports').select('id').eq('id', aReport.data.id)
+      : { data: [] }
+    log('Student cannot read another member\'s report', (otherRead.data ?? []).length === 0,
+      `rows=${otherRead.data?.length}`)
+
+    const revRead = r1.data
+      ? await adminClient.from('hazard_reports').select('id').eq('id', r1.data.id)
+      : { data: [] }
+    log('Reviewer can read school reports', (revRead.data ?? []).length === 1, `rows=${revRead.data?.length}`)
+
+    const xSchool = await studentClient.from('hazard_reports').insert({
+      school_id: B, category: 'other', description: 'RLS cross school report',
+    })
+    log('Cross-school report insert denied', !!xSchool.error && /row-level security/i.test(xSchool.error.message ?? ''),
+      xSchool.error?.message ?? 'no error?')
+
+    const sUpd = r1.data
+      ? await studentClient.from('hazard_reports').update({ status: 'acknowledged' }).eq('id', r1.data.id).select('id')
+      : { data: [] }
+    log('Non-reviewer status update blocked (0 rows)', (sUpd.data ?? []).length === 0, `rows=${sUpd.data?.length}`)
+
+    const sDel = r1.data
+      ? await studentClient.from('hazard_reports').delete().eq('id', r1.data.id).select('id')
+      : { data: [] }
+    log('Student report delete blocked (0 rows)', (sDel.data ?? []).length === 0, `rows=${sDel.data?.length}`)
+
+    const aDel = r1.data
+      ? await adminClient.from('hazard_reports').delete().eq('id', r1.data.id).select('id')
+      : { data: [] }
+    log('Admin report delete blocked — retained (0 rows)', (aDel.data ?? []).length === 0, `rows=${aDel.data?.length}`)
+
+    const intact = r1.data
+      ? await adminClient.from('hazard_reports').select('description, status').eq('id', r1.data.id).single()
+      : { data: null }
+    log('Report intact after delete attempts',
+      intact.data?.description === 'RLS Loose handrail by the science lab',
+      `status=${intact.data?.status ?? 'missing'}`)
+
+    const r2 = await mkRep({ category: 'other', description: 'RLS flickering corridor light' }).select('id').single()
+    log('Second report filed', !r2.error && !!r2.data?.id, r2.error?.message ?? '')
+
+    // Reviewer path: promote student to responder, exercise the workflow, revert
+    // Assert on the resulting role (state), not on RPC transport: a dropped
+    // response can surface as a transport error even though the statement ran.
+    await adminClient.rpc('admin_set_user_role', {
+      target_user_id: STUDENT_ID, new_role: 'responder',
+    })
+    const { data: promoProf } = await studentClient
+      .from('profiles').select('role').eq('id', STUDENT_ID).single()
+    log('Student promoted to responder (test)', promoProf?.role === 'responder',
+      `role=${promoProf?.role ?? 'unknown'}`)
+
+    const respRead = r1.data
+      ? await studentClient.from('hazard_reports').select('id').eq('id', r1.data.id)
+      : { data: [] }
+    log('Responder can read school reports', (respRead.data ?? []).length === 1, `rows=${respRead.data?.length}`)
+
+    const ack = r1.data
+      ? await studentClient.from('hazard_reports').update({ status: 'acknowledged' }).eq('id', r1.data.id).select('id, status')
+      : { data: [] }
+    log('Responder acknowledges report',
+      (ack.data ?? []).length === 1 && ack.data[0]?.status === 'acknowledged',
+      `status=${ack.data?.[0]?.status ?? 'missing'}`)
+
+    const badTransition = r2.data
+      ? await studentClient.from('hazard_reports').update({ status: 'resolved' }).eq('id', r2.data.id).select('id')
+      : { error: null }
+    log('Direct open->resolved rejected',
+      !!badTransition.error && /invalid status transition/i.test(badTransition.error.message ?? ''),
+      badTransition.error?.message ?? 'no error?')
+
+    const editDesc = r1.data
+      ? await studentClient.from('hazard_reports').update({ description: 'RLS edited description' }).eq('id', r1.data.id)
+      : { error: null }
+    log('Report details immutable after submission',
+      !!editDesc.error && /cannot be changed/i.test(editDesc.error.message ?? ''),
+      editDesc.error?.message ?? 'no error?')
+
+    const resolve = r1.data
+      ? await studentClient.from('hazard_reports').update({ status: 'resolved' }).eq('id', r1.data.id).select('status')
+      : { data: [] }
+    log('Responder resolves report', resolve.data?.[0]?.status === 'resolved',
+      `status=${resolve.data?.[0]?.status ?? 'missing'}`)
+
+    await adminClient.rpc('admin_set_user_role', {
+      target_user_id: STUDENT_ID, new_role: 'student',
+    })
+    const { data: revertProf } = await studentClient
+      .from('profiles').select('role').eq('id', STUDENT_ID).single()
+    log('Responder reverted to student', revertProf?.role === 'student',
+      `role=${revertProf?.role ?? 'unknown'}`)
+
+    const afterRevert = r1.data
+      ? await studentClient.from('hazard_reports').update({ status: 'open' }).eq('id', r1.data.id).select('id')
+      : { data: [] }
+    log('Reverted student status update blocked (0 rows)', (afterRevert.data ?? []).length === 0,
+      `rows=${afterRevert.data?.length}`)
+
+    await adminClient.from('locations').update({ status: 'archived' }).eq('id', repRoom.data.id)
+    const onArch = await mkRep({ category: 'other', description: 'RLS report on archived room' })
+    log('Report on archived location rejected', !!onArch.error && /archived location/i.test(onArch.error.message),
+      onArch.error?.message ?? 'no error?')
+
+    // Cross-school reads + other-school location (token-gated: needs school B)
+    if (token) {
+      try {
+        await cleanupSchoolB()
+        await sql(`insert into public.schools (id, name) values ('${B}', 'RLS Other School')`)
+        await sql(`insert into public.location_categories (school_id, name, environment) values ('${B}', 'Building', 'indoor')`)
+        const [catB] = await sql(`select id from public.location_categories where school_id = '${B}' and name = 'Building'`)
+        const [locB] = await sql(`insert into public.locations (school_id, name, category_id, environment)
+          values ('${B}', 'RLS Hidden Report Building', '${catB.id}', 'indoor') returning id`)
+        const [repB] = await sql(`insert into public.hazard_reports (school_id, reporter_id, category, description)
+          values ('${B}', '${STUDENT_ID}', 'other', 'RLS report from other school') returning id`)
+
+        const aReadB = await adminClient.from('hazard_reports').select('id')
+        log('Admin A cannot read school B reports',
+          !(aReadB.data ?? []).some((r) => r.id === repB.id))
+        const sReadB = await studentClient.from('hazard_reports').select('id')
+        log('Student A cannot read school B reports',
+          !(sReadB.data ?? []).some((r) => r.id === repB.id))
+
+        const xLoc = await studentClient.from('hazard_reports').insert({
+          school_id: A, location_id: locB.id, category: 'other', description: 'RLS report pointing at other school',
+        })
+        log('Report on other-school location rejected',
+          !!xLoc.error && /different school/i.test(xLoc.error.message ?? ''),
+          xLoc.error?.message ?? 'no error?')
+
+        await sql(`delete from public.audit_logs where entity_type = 'hazard_reports'
+          and entity_id in (select id::text from public.hazard_reports where school_id = '${B}')`)
+        await sql(`delete from public.hazard_reports where school_id = '${B}'`)
+        await cleanupSchoolB()
+        const afterB = await sql(`select id from public.schools where id = '${B}'`)
+        log('School B reports cleaned up', afterB.length === 0)
+      } catch (e) {
+        log('School B report checks', false, e.message)
+        try {
+          await sql(`delete from public.hazard_reports where school_id = '${B}'`)
+          await cleanupSchoolB()
+        } catch { /* best effort */ }
+      }
+    } else {
+      log('School B report checks', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
+    }
+  } else {
+    log('Report checks', false, 'room setup failed, skipping')
+  }
+
+  // Cleanup: reports have no client delete — token-gated removal of synthetic rows
+  if (token) {
+    try { await sql(`delete from public.hazard_reports where description like 'RLS %'`) } catch { /* best effort */ }
+  }
+  await adminClient.from('locations')
+    .update({ status: 'archived' })
+    .eq('status', 'active')
+    .eq('name', 'RLS Report Room')
+  if (token) {
+    const leftRep = await adminClient.from('hazard_reports').select('id').like('description', 'RLS %')
+    log('Cleanup removed all test reports', (leftRep.data ?? []).length === 0,
+      `remaining=${leftRep.data?.length}`)
+  } else {
+    log('Cleanup removed all test reports', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
+  }
+
+  const repAudit = await adminClient.from('audit_logs').select('action, entity_type').eq('entity_type', 'hazard_reports')
+  const repActions = new Set((repAudit.data ?? []).map((r) => r.action))
+  log('Report changes audited', repActions.has('create') && repActions.has('update'),
+    `actions=${[...repActions].join(',')}`)
 
   finish()
 }

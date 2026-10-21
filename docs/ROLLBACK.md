@@ -88,6 +88,44 @@ drop policy if exists schedules_update_admin on public.schedules;
 drop table if exists public.schedules;
 ```
 
+For `20261021000007_hazard_reports.sql` (Phase 3 hazard reports):
+
+```sql
+-- Rollback hazard reports migration (run only if explicitly approved)
+-- WARNING: loses all hazard report rows and their audit trail entries.
+-- Shared helpers (set_updated_at, prevent_school_reassign, audit_school_structure)
+-- are NOT dropped — they are used by other tables.
+drop trigger if exists hazard_reports_audit on public.hazard_reports;
+drop trigger if exists hazard_reports_no_school_reassign on public.hazard_reports;
+drop trigger if exists hazard_reports_set_updated_at on public.hazard_reports;
+drop trigger if exists hazard_reports_validate on public.hazard_reports;
+drop function if exists public.validate_hazard_report();
+drop function if exists public.is_reviewer();
+drop policy if exists hazard_reports_select_school on public.hazard_reports;
+drop policy if exists hazard_reports_insert_own on public.hazard_reports;
+drop policy if exists hazard_reports_update_reviewers on public.hazard_reports;
+drop table if exists public.hazard_reports;
+
+-- Optional: remove audit rows for the dropped reports (audit_logs is append-only)
+-- delete from public.audit_logs where entity_type = 'hazard_reports';
+```
+
+For `20261021000008_hazard_report_read_scope.sql` (read-scope narrowing) — run
+**before** the 0007 rollback above, and only if the `hazard_reports` table still
+exists:
+
+```sql
+-- Restores the broader 0007 read scope (all same-school roles read all reports).
+-- Prefer leaving 0008 in place: the narrower scope matches the approved
+-- permission matrix in docs/ARCHITECTURE.md section 1.1/1.2.
+drop policy if exists hazard_reports_select_school on public.hazard_reports;
+
+create policy "hazard_reports_select_school"
+  on public.hazard_reports for select
+  to authenticated
+  using (school_id = public.my_school_id());
+```
+
 ### Option B: Point-in-time Restore
 
 If the project plan supports PITR:

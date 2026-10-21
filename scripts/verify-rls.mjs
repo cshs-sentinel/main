@@ -442,6 +442,17 @@ async function main() {
     log('Effective range order rejected', !!badRange.error && /effective until/i.test(badRange.error.message),
       badRange.error?.message ?? 'no error?')
 
+    const zeroLength = await mkSched({ day_of_week: 6, start_time: '09:00', end_time: '09:00', label: 'RLS Zero Length' })
+    log('Zero-length slot (start = end) rejected', !!zeroLength.error && /end time must be after/i.test(zeroLength.error.message),
+      zeroLength.error?.message ?? 'no error?')
+
+    const singleDay = await mkSched({
+      day_of_week: 6, start_time: '08:00', end_time: '09:00', label: 'RLS One Day',
+      effective_from: '2026-03-02', effective_until: '2026-03-02',
+    })
+    log('Single-day effective range accepted (inclusive boundary)', !singleDay.error,
+      singleDay.error?.message ?? '')
+
     const xSchool = await adminClient.from('schedules').insert({
       school_id: B, location_id: schedRoom.data.id,
       day_of_week: 4, start_time: '08:00', end_time: '09:00', label: 'RLS Cross',

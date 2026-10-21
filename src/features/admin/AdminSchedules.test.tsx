@@ -226,6 +226,23 @@ describe('AdminSchedules', () => {
     expect(scheduleInserts()).toHaveLength(0)
   })
 
+  it('rejects a zero-length slot where start equals end', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText(/Period 1/)
+
+    await user.click(screen.getByRole('button', { name: 'Add schedule' }))
+    await user.selectOptions(screen.getByLabelText('Location'), 'l1')
+    fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '09:00' } })
+    fireEvent.change(screen.getByLabelText('End time'), { target: { value: '09:00' } })
+    await user.click(screen.getByRole('button', { name: 'Create schedule' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'End time must be after start time',
+    )
+    expect(scheduleInserts()).toHaveLength(0)
+  })
+
   it('rejects an effective range that ends before it starts', async () => {
     const user = userEvent.setup()
     renderPage()

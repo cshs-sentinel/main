@@ -118,6 +118,41 @@ $env:SUPABASE_ACCESS_TOKEN = "<management token>"
 
 Without this, Supabase rejects the sign-in redirect ("requested path is invalid").
 
+> This has already been done for the current deployment: `site_url` is the deployed
+> origin and the allow-list covers the deployed origin plus localhost.
+
+### 5.1 A dedicated project for the pilot (needs the account owner)
+
+The current deployment points at the **development** project. For a pilot, create a
+second Supabase project so the pilot has clean, isolated data:
+
+1. Dashboard → **New project** → name `SENTINEL Pilot`, region `ap-southeast-1`
+   (same region as the dev project), strong database password, plan **free**.
+2. Copy the project's **anon** key and **URL**, then set them as the build
+   variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) for the pilot
+   deployment.
+3. Apply the migrations in order, `0001` … `0017` (the SQL files in
+   `supabase/migrations/` are the source of truth — the order is the filename
+   order). Each file is applied through the Supabase SQL editor or the Management
+   API query endpoint; the dev project was built exactly this way.
+4. Seed the pilot school and its location categories, and create the first
+   administrator (see `docs/FIRST_ADMIN.md`).
+5. Set the pilot project's auth configuration: `site_url` = the pilot hostname,
+   `uri_allow_list` = the pilot origin, and `disable_signup = true` (or leave
+   sign-ups open only if the school wants self-registration with a custom SMTP
+   provider).
+6. Point the weather worker at the pilot project by updating its
+   `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` secrets, then redeploy it.
+
+> The Management API token available to the assistant can **read** projects and run
+> SQL, but **creating a project returns 403** — project creation has to be done in
+> the dashboard by the account owner.
+
+> **Free-tier caveat:** a free Supabase project is **paused after a week of
+> inactivity** and stays paused until someone opens the dashboard. For a pilot,
+> either check the project regularly or use a paid plan; a paused project means
+> sign-in and data access stop working.
+
 Pilot-only options to consider before the school pilot:
 - `disable_signup: true` once accounts are pre-provisioned by the administrator.
 - `mailer_autoconfirm: true` (or a custom SMTP provider) because the default

@@ -72,6 +72,28 @@ drop table if exists public.schools;
 -- (re-run supabase migration 20261021000002_school_structure.sql)
 ```
 
+For `20261021000004_fix_location_parent_check.sql` and
+`20261021000005_fix_location_cycle_check.sql` (Phase 2 location fix-ups):
+
+```sql
+-- Both migrations only REPLACE public.validate_location() with a corrected
+-- version. Rolling them back therefore means restoring the previous function
+-- body, or - for a full reset - dropping the function, which the 0003 rollback
+-- above already does. No table or policy changes to undo.
+drop function if exists public.validate_location();
+-- Re-apply after rolling back: 20261021000003 -> 0004 -> 0005
+```
+
+For `20261021000010_fix_attachment_filename.sql` and
+`20261021000011_report_photo_delete_scope.sql` (Phase 3 storage fix-ups):
+
+```sql
+-- 0010 only replaces public.validate_report_attachment(); 0011 only replaces
+-- the two storage policies. The 0009 rollback block above already drops the
+-- function and restores the original policies - use it for a full reset.
+drop function if exists public.validate_report_attachment();
+```
+
 For `20261021000006_schedules.sql` (Phase 2 schedules):
 
 ```sql

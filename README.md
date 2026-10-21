@@ -28,6 +28,7 @@ npm run dev
 | `npm run typecheck` | `tsc -b --noEmit` |
 | `npm test` | Vitest unit/component tests |
 | `npm run check:a11y` | source-level accessibility / contrast / UI checks |
+| `npm run check:pilot` | automated pilot pre-flight checklist (39 checks) |
 | `npm run build` | production build to `dist/` |
 | `node scripts/verify-rls.mjs` | RLS verification against the dev Supabase project |
 
@@ -37,12 +38,14 @@ is never committed.
 
 ## Current state
 
-Phases 1–7 complete (Gate 1–7 approved). Phase 8 (security, accessibility and
-reliability review) is implemented: a per-role API security sweep, a source-level
-accessibility gate (`npm run check:a11y`), an administrator audit-log view, and a
-prioritised risk register (`docs/RISK_REGISTER.md`) that records the remaining
-gaps instead of glossing over them. The system is **not production-ready** — see
-the register and `docs/GATE8_EVIDENCE.md`.
+Phases 1–8 complete (Gate 1–8 approved). Phase 9 (deployment and controlled pilot)
+is **prepared**: the app and the weather worker are live, `npm run check:pilot`
+runs 39 automated pre-flight checks, the migration rollback path has been
+rehearsed for real, and `docs/GATE9_EVIDENCE.md` states exactly what is left —
+chiefly the school authority's sign-off and seven owner actions in
+`docs/RISK_REGISTER.md` (rotate the Cloudflare token, enable 2FA, disable
+sign-ups, set the school coordinates, create the pilot Supabase project, decide
+on responder notification, rehearse a full restore).
 See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 
 ## Documentation
@@ -58,6 +61,7 @@ See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 - `docs/GATE7_EVIDENCE.md` — Gate 7 evidence pack
 - `docs/GATE8_EVIDENCE.md` — Gate 8 evidence pack
 - `docs/RISK_REGISTER.md` — prioritised risk and defect list with mitigations
+- `docs/GATE9_EVIDENCE.md` — Gate 9 (pilot) evidence and what remains
 - `docs/HEAT_INDEX.md` — heat index formula, units, applicability and rule version
 - `docs/MANUAL_FALLBACK.md` — manual fallback and response responsibilities
 - `docs/FIRST_ADMIN.md` — first administrator provisioning

@@ -143,6 +143,19 @@ The phase also recorded an explicit **not production-ready** statement: responde
 notification is manual, restore has not been rehearsed, no browser/device pass has
 been run, and the deployment still targets the development Supabase project.
 
+## Phase 9 — Deployment and controlled pilot (prepared; awaiting the school's sign-off)
+
+| Task | Commit | Files | Tests | Status |
+|---|---|---|---|---|
+| 9.1 | *pending* | `scripts/pilot-readiness.mjs` + `npm run check:pilot` (39 automated pre-flight checks: env, bundle, headers, routes, worker, docs, rollback coverage) | 39/39 pass | done |
+| 9.2 | *pending* | Rollback rehearsal: the documented inverse SQL for migration 0012 was executed, the table re-applied from the repository, and the full suite re-run | rehearsed, 208/208 | done |
+| 9.3 | *pending* | `docs/GATE9_EVIDENCE.md`, DEPLOYMENT §5.1 (pilot project steps, free-tier pause warning), risk register updates | 39/39 + 208/208 | done — **awaiting the school authority's sign-off** |
+
+The gate itself is a human decision: the pilot checklist must be signed by the
+responsible school authority, and seven risks (H1–H7) still need owner actions —
+including creating the pilot Supabase project, which the available management
+token cannot do (403).
+
 Staleness correction (Task 6.5): the worker and the UI computed staleness from the
 *fetch* timestamp, which is always current, so `freshness.stale` and the stored
 `is_stale` column could never become true and the live "STALE" marker could never

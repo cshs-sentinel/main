@@ -130,6 +130,19 @@ the start of a run. An interrupted or manual test had left the admin account as 
 plain student and four seeded categories inactive, which cascaded into 31
 unrelated failures.
 
+## Phase 8 — Security, accessibility and reliability (complete, Gate 8 pending review)
+
+| Task | Commit | Files | Tests | Status |
+|---|---|---|---|---|
+| 8.1 | *pending* | `scripts/verify-rls.mjs` §18 (per-table anon sweep, student write/mutation denial on 18 tables, session behaviour, input validation, upload restrictions, secret hygiene in the built bundle) | 11 new API checks | done |
+| 8.2 | *pending* | `scripts/check-a11y.mjs` + `npm run check:a11y` (accessible names, one `<main>` per page, WCAG AA contrast of the tokens, focus, 44 px targets, reduced motion, breakpoints, alt text) — found and fixed 3 real defects | 30 source files checked | done |
+| 8.3 | *pending* | `src/features/admin/AuditLog.tsx` + tests, `/admin/audit` route (the audit trail was written but never shown) | 6 unit tests | done |
+| 8.4 | *pending* | `docs/RISK_REGISTER.md` (7 high / 12 medium / 6 low, with mitigations and open actions), `docs/GATE8_EVIDENCE.md` | 208/208 API, 170/170 unit | done — **awaiting Gate 8 review** |
+
+The phase also recorded an explicit **not production-ready** statement: responder
+notification is manual, restore has not been rehearsed, no browser/device pass has
+been run, and the deployment still targets the development Supabase project.
+
 Staleness correction (Task 6.5): the worker and the UI computed staleness from the
 *fetch* timestamp, which is always current, so `freshness.stale` and the stored
 `is_stale` column could never become true and the live "STALE" marker could never

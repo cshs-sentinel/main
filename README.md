@@ -27,6 +27,7 @@ npm run dev
 | `npm run lint` | oxlint |
 | `npm run typecheck` | `tsc -b --noEmit` |
 | `npm test` | Vitest unit/component tests |
+| `npm run check:a11y` | source-level accessibility / contrast / UI checks |
 | `npm run build` | production build to `dist/` |
 | `node scripts/verify-rls.mjs` | RLS verification against the dev Supabase project |
 
@@ -36,12 +37,12 @@ is never committed.
 
 ## Current state
 
-Phases 1–6 complete (Gate 1–6 approved). Phase 7 (in-app alerts) is implemented and
-externally verified: drafts, administrator approval and publication, corrections
-that retain the old version, cancellations with a reason, full audit history, and
-automatic new-case notices for responders — with **no external delivery** and no
-claim of delivery anywhere (migrations 0001–0017). Gate 7 evidence is in
-`docs/GATE7_EVIDENCE.md`.
+Phases 1–7 complete (Gate 1–7 approved). Phase 8 (security, accessibility and
+reliability review) is implemented: a per-role API security sweep, a source-level
+accessibility gate (`npm run check:a11y`), an administrator audit-log view, and a
+prioritised risk register (`docs/RISK_REGISTER.md`) that records the remaining
+gaps instead of glossing over them. The system is **not production-ready** — see
+the register and `docs/GATE8_EVIDENCE.md`.
 See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 
 ## Documentation
@@ -55,6 +56,8 @@ See `docs/DEVELOPMENT_LOG.md` for the per-task record.
 - `docs/GATE5_EVIDENCE.md` — Gate 5 evidence pack
 - `docs/GATE6_EVIDENCE.md` — Gate 6 evidence pack
 - `docs/GATE7_EVIDENCE.md` — Gate 7 evidence pack
+- `docs/GATE8_EVIDENCE.md` — Gate 8 evidence pack
+- `docs/RISK_REGISTER.md` — prioritised risk and defect list with mitigations
 - `docs/HEAT_INDEX.md` — heat index formula, units, applicability and rule version
 - `docs/MANUAL_FALLBACK.md` — manual fallback and response responsibilities
 - `docs/FIRST_ADMIN.md` — first administrator provisioning

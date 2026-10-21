@@ -76,18 +76,13 @@ export default function Dashboard() {
     }
   }, [fetchResults, applyResults])
 
-  if (loading) {
-    return (
-      <main id="main" className="admin-page">
-        <h1>Dashboard</h1>
-        <p role="status">Loading dashboard…</p>
-      </main>
-    )
-  }
-
   return (
     <main id="main" className="admin-page">
       <h1>Dashboard</h1>
+      {loading ? (
+        <p role="status">Loading dashboard…</p>
+      ) : (
+        <>
       <p className="admin-subtitle">
         Signed in as {user?.id ? 'an account' : 'a user'}
         {role ? ` (${role})` : ''}. You only see what your role is allowed to see.
@@ -198,6 +193,7 @@ export default function Dashboard() {
           )}
           <p className="loc-meta">
             <Link to="/admin/users">User management</Link> ·{' '}
+            <Link to="/admin/audit">Audit log</Link> ·{' '}
             <Link to="/admin/structure">School locations</Link> ·{' '}
             <Link to="/admin/schedules">Schedules</Link>
           </p>
@@ -235,6 +231,8 @@ export default function Dashboard() {
           </li>
         </ul>
       </section>
+        </>
+      )}
     </main>
   )
 }

@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit",
+    "check:a11y": "node scripts/check-a11y.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && npx wrangler pages deploy dist --project-name sentinel-app",
     "deploy:list": "npx wrangler pages deployment list --project-name sentinel-app"

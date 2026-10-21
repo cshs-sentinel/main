@@ -18,6 +18,7 @@ import Dashboard from './features/dashboard/Dashboard'
 import AppShell from './features/nav/AppShell'
 import Alerts from './features/alerts/Alerts'
 import AdminAlerts from './features/admin/AdminAlerts'
+import AuditLog from './features/admin/AuditLog'
 
 function Home() {
   const { role } = useAuth()
@@ -102,6 +103,7 @@ export default function App() {
               </Route>
               <Route element={<RoleGuard allowed={['administrator']} />}>
                 <Route path="/admin/users" element={<AdminUsers />} />
+                <Route path="/admin/audit" element={<AuditLog />} />
                 <Route path="/admin/structure" element={<Locations />} />
                 <Route path="/admin/schedules" element={<AdminSchedules />} />
               </Route>

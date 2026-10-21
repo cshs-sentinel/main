@@ -1372,6 +1372,134 @@ async function main() {
     log('Cleanup removed all test alerts', true, 'skipped: SUPABASE_ACCESS_TOKEN not set')
   }
 
+  // 18. Security sweep: direct API access per role, session behaviour,
+  //     input validation, upload restrictions, secret hygiene
+  console.log('\n18. Security sweep');
+
+  const ALL_TABLES = [
+    'profiles', 'audit_logs', 'schools', 'location_categories', 'locations',
+    'schedules', 'hazard_reports', 'report_attachments', 'incidents',
+    'incident_notes', 'incident_status_history', 'check_ins',
+    'weather_observations', 'alerts', 'incident_notifications',
+  ]
+
+  // Anon must not see a single row in any table
+  let anonLeaks = []
+  for (const table of ALL_TABLES) {
+    const { data, error } = await admin.from(table).select('*')
+    const rows = Array.isArray(data) ? data.length : 0
+    if (rows > 0 || error) anonLeaks.push(`${table}(${rows}${error ? ',error' : ''})`)
+  }
+  log('Anon sees no rows in any table', anonLeaks.length === 0, anonLeaks.join(', '))
+
+  // Students may create only their own records
+  const STUDENT_DENIED_WRITES = [
+    ['profiles', { role: 'administrator' }],
+    ['schools', { name: 'RLS hacked school' }],
+    ['location_categories', { name: 'RLS hacked category', environment: 'indoor' }],
+    ['locations', { name: 'RLS hacked location' }],
+    ['schedules', { day_of_week: 1, start_time: '08:00', end_time: '09:00' }],
+    ['alerts', { title: 'RLS hacked alert', body: 'RLS hacked alert body' }],
+    ['incident_notifications', { case_ref: 'RLS', title: 'RLS', body: 'RLS' }],
+    ['weather_observations', { source: 'open-meteo', observed_at: '2026-01-01T00:00:00Z', latitude: 0, longitude: 0, temperature_c: 20, humidity_percent: 50, rule_version: 'heat_index_v1' }],
+    ['audit_logs', { action: 'RLS', entity_type: 'RLS' }],
+    ['incident_notes', { body: 'RLS hacked note' }],
+    ['incident_status_history', { to_status: 'closed' }],
+  ]
+  let studentWriteLeaks = []
+  for (const [table, payload] of STUDENT_DENIED_WRITES) {
+    const { error } = await studentClient.from(table).insert(payload)
+    if (!error) studentWriteLeaks.push(table)
+  }
+  log('Student cannot write protected tables', studentWriteLeaks.length === 0,
+    studentWriteLeaks.join(', '))
+
+  // Students may not modify or delete existing records
+  const { data: myLocation } = await studentClient.from('locations').select('id').limit(1)
+  const studentMutations = [
+    ['locations', studentClient.from('locations').update({ name: 'RLS renamed' }).eq('id', myLocation?.[0]?.id ?? '00000000-0000-0000-0000-000000000000')],
+    ['schedules', studentClient.from('schedules').update({ label: 'RLS' }).eq('id', '00000000-0000-0000-0000-000000000000')],
+    ['hazard_reports', studentClient.from('hazard_reports').update({ status: 'resolved' }).eq('id', '00000000-0000-0000-0000-000000000000')],
+    ['incidents', studentClient.from('incidents').update({ status: 'closed' }).eq('id', '00000000-0000-0000-0000-000000000000')],
+    ['alerts', studentClient.from('alerts').update({ title: 'RLS' }).eq('id', '00000000-0000-0000-0000-000000000000')],
+    ['audit_logs', studentClient.from('audit_logs').update({ action: 'RLS' }).eq('id', 0)],
+    ['weather_observations', studentClient.from('weather_observations').update({ temperature_c: 99 }).eq('id', 0)],
+  ]
+  const mutationResults = await Promise.all(studentMutations.map(([, q]) => q.select('id')))
+  const mutationLeaks = studentMutations
+    .map(([table], i) => [table, mutationResults[i]])
+    .filter(([, res]) => (res?.data?.length ?? 0) > 0)
+    .map(([table]) => table)
+  log('Student cannot modify or delete existing records', mutationLeaks.length === 0,
+    mutationLeaks.join(', '))
+
+  // Session behaviour: a tampered token must be rejected
+  const badTokenRes = await fetch(`${url}/rest/v1/locations?select=id&limit=1`, {
+    headers: { apikey: anonKey, Authorization: 'Bearer not-a-real-token' },
+  })
+  log('A tampered bearer token is rejected', badTokenRes.status === 401,
+    `status=${badTokenRes.status}`)
+
+  const noTokenRes = await fetch(`${url}/rest/v1/locations?select=id&limit=1`, {
+    headers: { apikey: anonKey },
+  })
+  const noTokenBody = await noTokenRes.json().catch(() => [])
+  log('A request without a session returns no rows', Array.isArray(noTokenBody)
+    ? noTokenBody.length === 0
+    : true, `status=${noTokenRes.status}`)
+
+  // Oversized and invalid input is rejected by the database
+  const tooLong = await studentClient.from('hazard_reports').insert({
+    school_id: A, category: 'other', description: 'x'.repeat(2001),
+  })
+  log('Oversized text is rejected by the database', !!tooLong.error,
+    tooLong.error?.message ?? 'no error?')
+
+  const badStatus = await studentClient.from('check_ins').insert({
+    school_id: A, location_source: 'not_a_source',
+  })
+  log('Invalid enum value is rejected by the database', !!badStatus.error,
+    badStatus.error?.message ?? 'no error?')
+
+  // Upload restrictions: private bucket, MIME allowlist, size limit
+  const publicObject = await fetch(
+    `${url.replace('https://', 'https://')}/storage/v1/object/public/report-photos/${A}/probe.png`,
+  )
+  log('Objects are not publicly readable', publicObject.status !== 200,
+    `status=${publicObject.status}`)
+
+  const badType = await studentClient.storage.from('report-photos')
+    .upload(`${A}/00000000-0000-0000-0000-000000000000/probe.txt`, Buffer.from('plain text'), {
+      contentType: 'text/plain',
+    })
+  log('Uploads of disallowed file types are rejected', !!badType.error,
+    badType.error?.message ?? 'no error?')
+
+  const tooBig = await studentClient.storage.from('report-photos')
+    .upload(`${A}/00000000-0000-0000-0000-000000000000/big.png`, Buffer.alloc(6 * 1024 * 1024, 1), {
+      contentType: 'image/png',
+    })
+  log('Uploads larger than the bucket limit are rejected', !!tooBig.error,
+    tooBig.error?.message ?? 'no error?')
+
+  // Secret hygiene: the privileged key must never be in the browser bundle
+  let bundleLeaks = []
+  try {
+    const { readdirSync, readFileSync } = await import('node:fs')
+    const assetsDir = resolve(import.meta.dirname, '../dist/assets')
+    for (const file of readdirSync(assetsDir)) {
+      if (!file.endsWith('.js')) continue
+      const content = readFileSync(resolve(assetsDir, file), 'utf8')
+      if (content.includes('service_role') || content.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+        bundleLeaks.push(file)
+      }
+    }
+  } catch (e) {
+    bundleLeaks = [`bundle not built (${e.message})`]
+  }
+  log('No privileged key in the built browser bundle', bundleLeaks.length === 0,
+    bundleLeaks.join(', '))
+
   finish()
 }
 

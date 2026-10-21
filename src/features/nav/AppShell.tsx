@@ -37,6 +37,7 @@ export default function AppShell() {
     ...(isAdmin
       ? ([
           { to: '/admin/users', label: 'User management' },
+          { to: '/admin/audit', label: 'Audit log' },
           { to: '/admin/structure', label: 'School locations' },
           { to: '/admin/schedules', label: 'Schedules' },
         ] as { to: string; label: string; note?: string }[])

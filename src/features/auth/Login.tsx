@@ -37,7 +37,7 @@ export default function Login() {
   }
 
   return (
-    <main className="auth-page">
+    <main id="main" className="auth-page">
       <h1>Sign in to SENTINEL</h1>
       <form onSubmit={handleSubmit} noValidate>
         <label htmlFor="login-email">Email</label>

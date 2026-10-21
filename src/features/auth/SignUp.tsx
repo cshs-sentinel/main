@@ -44,7 +44,7 @@ export default function SignUp() {
   }
 
   return (
-    <main className="auth-page">
+    <main id="main" className="auth-page">
       <h1>Create a SENTINEL account</h1>
       <form onSubmit={handleSubmit} noValidate>
         <label htmlFor="signup-email">Email</label>

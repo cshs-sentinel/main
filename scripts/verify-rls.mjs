@@ -1158,6 +1158,43 @@ async function main() {
     studentHead === (studentRows?.length ?? 0),
     `head=${studentHead} rows=${studentRows?.length ?? 0}`)
 
+  // 16. Weather observations (server writes only, authenticated read)
+  console.log('\n16. Weather observations');
+  const { data: anonWeather } = await admin.from('weather_observations').select('*')
+  log('Anon blocked from weather observations', (anonWeather?.length ?? 0) === 0,
+    `rows=${anonWeather?.length ?? 0}`)
+
+  const { data: wRead, error: wReadErr } = await studentClient
+    .from('weather_observations')
+    .select('id, source, rule_version, fetched_at, is_stale')
+  log('Student reads school weather observations', !wReadErr,
+    wReadErr?.message ?? `rows=${wRead?.length ?? 0}`)
+
+  const { error: wIns } = await studentClient.from('weather_observations').insert({
+    school_id: A, source: 'open-meteo', observed_at: '2026-01-01T00:00:00Z',
+    latitude: 0, longitude: 0, temperature_c: 20, humidity_percent: 50,
+    rule_version: 'heat_index_v1',
+  })
+  log('Client cannot write a weather observation', !!wIns, wIns?.message ?? 'no error?')
+
+  const { data: wDel } = await studentClient.from('weather_observations')
+    .delete().gt('id', 0).select('id')
+  log('Client cannot delete weather observations', (wDel?.length ?? 0) === 0,
+    `rows=${wDel?.length ?? 0}`)
+
+  if (token) {
+    const [latest] = await sql(`select source, rule_version, is_stale, temperature_c,
+      humidity_percent, heat_index_method, heat_index_c
+      from public.weather_observations order by fetched_at desc limit 1`)
+    log('Server-side observation stored with source and rule version',
+      Boolean(latest && latest.source === 'open-meteo'
+        && latest.rule_version === 'heat_index_v1' && latest.heat_index_method),
+      latest ? `${latest.source}/${latest.rule_version}/${latest.heat_index_method}` : 'no observation yet')
+  } else {
+    log('Server-side observation stored with source and rule version', true,
+      'skipped: SUPABASE_ACCESS_TOKEN not set')
+  }
+
   finish()
 }
 

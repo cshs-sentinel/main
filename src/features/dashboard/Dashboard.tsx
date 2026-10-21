@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../auth/AuthContext'
 import { statusLabel } from '../incidents/shared'
+import WeatherAdvisory from '../weather/WeatherAdvisory'
 import type { IncidentRow } from '../incidents/shared'
 
 interface DashboardCounts {
@@ -171,6 +172,8 @@ export default function Dashboard() {
         </section>
       )}
 
+      {isReviewer && <WeatherAdvisory />}
+
       {role === 'administrator' && (
         <section className="dash-section">
           <h2>Administration</h2>
@@ -224,7 +227,9 @@ export default function Dashboard() {
         <h2>Not available yet</h2>
         <ul className="dash-roles">
           <li>Published alerts — the alert workflow is not built yet (later phase).</li>
-          <li>Weather and heat-index advisory — the weather module is not built yet (later phase).</li>
+          {!isReviewer && (
+            <li>Weather advisory — shown to responders and administrators only.</li>
+          )}
         </ul>
       </section>
     </main>

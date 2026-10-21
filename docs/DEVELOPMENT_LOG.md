@@ -77,6 +77,23 @@ on the client-side role, so a mis-scoped response still cannot show a student
 school-wide numbers. Published alerts and the weather advisory are shown as "not
 available yet" rather than faked.
 
+## Phase 6 — Weather and computation (complete, Gate 6 pending review)
+
+| Task | Commit | Files | Tests | Status |
+|---|---|---|---|---|
+| 6.1 | *pending* | `src/features/weather/heatIndex.ts` (pure module), `docs/HEAT_INDEX.md`, migration 0015 `weather_observations` | 42 heat-index tests | done |
+| 6.2 | *pending* | `worker/index.ts` + `worker/wrangler.toml` (Cloudflare Worker, service-role secret), deployed as `sentinel-weather` | live worker response + storage check | done |
+| 6.3 | *pending* | `src/features/weather/WeatherAdvisory.tsx` + tests, dashboard wiring, verify-rls §16 | 5 UI tests, 6 API checks | done |
+| 6.4 | *pending* | `docs/GATE6_EVIDENCE.md`, ARCHITECTURE/ROLLBACK updates | verify-rls 175/175, 132 unit tests | done — **awaiting Gate 6 review** |
+
+Weather model (Phase 6): the NOAA/NWS Rothfusz regression lives in a pure module
+tested against the NOAA reference table; the Cloudflare Worker fetches the
+observation, calls the same module, stamps source/timestamps/units/freshness/rule
+version, stores the observation server-side and serves the advisory. The advisory
+is advisory-only, visible to responders and administrators, and never triggers an
+automatic action. The school coordinates are still placeholders and are labelled
+as such until the real location is configured.
+
 Implemented report model (migrations 0007–0008): any authenticated member files a
 report for their own school as themselves; a report is readable by its reporter and
 by responder/administrator reviewers only; reviewers move status through

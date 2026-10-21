@@ -188,11 +188,11 @@ describe('Dashboard', () => {
     expect(within(section as HTMLElement).getByText(/student: 38/)).toBeInTheDocument()
   })
 
-  it('states that alerts and weather are not available yet', async () => {
+  it('states that alerts are not available yet and that weather is reviewer-only', async () => {
     renderPage('student', { role: 'student' })
     expect(await screen.findByText('Not available yet')).toBeInTheDocument()
     expect(screen.getByText(/Published alerts/)).toBeInTheDocument()
-    expect(screen.getByText(/Weather and heat-index advisory/)).toBeInTheDocument()
+    expect(screen.getByText(/Weather advisory — shown to responders/)).toBeInTheDocument()
   })
 
   it('shows an error when the counts call fails', async () => {

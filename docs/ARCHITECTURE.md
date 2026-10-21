@@ -155,15 +155,15 @@ guards (`src/App.tsx`); implemented routes are listed in §2.1.
 
 **Rule:** Business logic that must be trusted (role checks for privileged actions, heat-index computation with secrets) runs server-side. Simple CRUD goes through PostgREST + RLS.
 
-### 3.2 Cloudflare Functions (Proposed)
+### 3.2 Cloudflare Functions / Worker
 
-| Function | Method | Path | Purpose |
-|---|---|---|---|
-| `weather` | GET | `/api/weather` | Fetch + normalize weather; cache in DB |
-| `heat-index` | POST | `/api/heat-index` | Compute heat-index from inputs (or trigger from weather) |
-| `incident-notify` | — | (internal) | Future: extend for external channels (post-MVP) |
+| Function | Method | Path | Purpose | Status |
+|---|---|---|---|---|
+| `sentinel-weather` (Worker) | GET | `/` | Fetch + normalize the observation, compute the heat index with the shared module, stamp provenance and freshness, store the observation, serve the advisory | **Implemented** (Phase 6) — `worker/index.ts`, deployed at `sentinel-weather.<account>.workers.dev` |
+| `heat-index` | POST | `/api/heat-index` | Standalone heat-index endpoint | Not implemented — the advisory endpoint already returns the computed value; a separate endpoint is unnecessary |
+| `incident-notify` | — | (internal) | Future: extend for external channels (post-MVP) | Planned (Phase 7) |
 
-No paid services. Weather provider: **Open-Meteo** (free, no API key required) or equivalent free tier — to be confirmed at Phase 7.
+No paid services. Weather provider: **Open-Meteo** (free, no API key required) — confirmed and in use since Phase 6. The Worker holds the Supabase service-role key as a Cloudflare **secret**; it is never part of the browser bundle.
 
 ### 3.3 Supabase Edge Functions (Alternative)
 
@@ -242,7 +242,7 @@ school-scoped and archive-only (no client deletes).
 | `incident_status_history` | id, incident_id, from_status, to_status, actor_id, note | Implemented: append-only; readable with the incident |
 | `incident_notes` | id, incident_id, author_id, body | Implemented: creator + responders add; no update/delete |
 | `alerts` | id, status (draft/approved/published/cancelled), content, target_role, target_building_id | Draft: author+admin; Published: all authenticated |
-| `weather_observations` | id, source, observed_at, temp_c, humidity_pct, fetched_at, is_stale | Authenticated read; server write |
+| `weather_observations` | id, school_id, source, observed_at, fetched_at, latitude, longitude, temperature_c, humidity_percent, heat_index_c, heat_index_method, heat_index_applicable, rule_version, is_stale | Implemented: **server writes only** (worker service role); authenticated own-school read; no client write |
 | `audit_logs` | id, actor_id, action, entity_type, entity_id, payload JSONB, created_at | Admin (own-school actors); insert via trigger/RPC only |
 
 **Locations server-side validation** (trigger `validate_location`): same-school
@@ -450,6 +450,17 @@ Published alerts and the weather advisory are shown as "not available yet" rathe
 than faked.
 
 ### 7.2 Heat-Index Computation
+
+**Implemented (Phase 6, migration 0015 + `worker/`):** the calculation lives in
+`src/features/weather/heatIndex.ts` (pure module, 42 unit tests against the NOAA
+reference table) and the retrieval lives in the Cloudflare Worker
+`worker/index.ts`, which fetches the current observation for the school's
+coordinates, calls the same module, stamps source/observed_at/fetched_at/units/
+freshness/rule version, stores the observation server-side, and serves the
+advisory. The advisory is shown to responders and administrators only, always
+carries the disclaimer that external weather is not an indoor measurement, and
+never triggers an automatic action. Full specification: `docs/HEAT_INDEX.md`;
+evidence: `docs/GATE6_EVIDENCE.md`.
 
 **Formula:** NWS Rothfusz regression (documented in `docs/HEAT_INDEX.md`).
 

@@ -211,6 +211,18 @@ revoke execute on function public.dashboard_counts() from authenticated;
 drop function if exists public.dashboard_counts();
 ```
 
+For `20261021000015_weather_observations.sql` (Phase 6 weather observations):
+
+```sql
+-- Removes the stored weather observations and the table. The worker keeps
+-- working and will simply fail to store new rows (it logs and continues).
+drop policy if exists weather_observations_select_school on public.weather_observations;
+drop table if exists public.weather_observations;
+```
+
+The Cloudflare Worker is undeployed separately:
+`npx wrangler delete --config worker/wrangler.toml` (also removes its secrets).
+
 ### Option B: Point-in-time Restore
 
 If the project plan supports PITR:

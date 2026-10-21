@@ -17,13 +17,14 @@ the browser.
 | Item | Value |
 |---|---|
 | Live URL (stable) | **https://sentinel-app-1jo.pages.dev** |
-| Deployment URL (this build) | https://b92071f4.sentinel-app-1jo.pages.dev |
+| Deployment URL (Phase 5 build) | https://606ad0ac.sentinel-app-1jo.pages.dev |
+| Previous deployment (Phase 4) | https://b92071f4.sentinel-app-1jo.pages.dev |
 | Cloudflare account | `62991ae0c53627eb96f1207463435b3f` — "Sentinelcshs@gmail.com's Account" |
 | Pages project | `sentinel-app` (production branch `main`) |
 | Deployed commit | `b8b4caa` |
 | Backend | Supabase project `vuqjfigoeuvjieznqyil` (**development** project, synthetic data only) |
 | Auth | `site_url` = the deployed origin; redirect allow-list = localhost + the deployed origin |
-| Verified | root 200, deep links (`/sos`, `/incidents`) 200, CSP + security headers applied, password sign-in from the deployed origin 200, anon read 0 rows |
+| Verified | root 200, deep links (`/sos`, `/incidents`, `/dashboard`) 200, CSP + security headers applied, password sign-in from the deployed origin 200, anon read 0 rows |
 
 Sign in with the synthetic accounts: `rls-admin@test.local` / `RlsTestPass123!`
 (administrator) and `rls-student@test.local` / `RlsTestPass123!` (student).
